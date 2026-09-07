@@ -4,6 +4,7 @@
 
 #Consist of following component
 
+<!-- Ordered List -->
 1 Navigation for the site
 2 Hero Section
 3 Section with brief intro about FreshBite
