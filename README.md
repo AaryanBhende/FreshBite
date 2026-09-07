@@ -1,6 +1,6 @@
 #Fresh Bite Cafe
 
-#Contains Homepage for the site
+#Contains Homepage for the site 
 
 #Consist of following component
 
