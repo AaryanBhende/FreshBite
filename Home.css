@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 *, ::before, ::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 
@@ -8,30 +8,26 @@ body, figure, dl, dd, h1, h2, h3, p {
 }
 
 body {
-=======
 /*Global*/
 *, ::before, ::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+/* 1. Standardize font-family on body to match menu.css */
 body {
-    margin: 0;
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
-    font-family: 'Be Vietnam Pro', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #fff;
-    color: #1a1c1b;
-    overflow-x: hidden;
+  margin: 0;
+  font-family: Arial, sans-serif; /* Changed from 'Be Vietnam Pro' to match menu.css */
+  background: #fff;
+  color: #1a1c1b;
+  overflow-x: hidden;
 }
 
 /* NAVIGATION */
 .navbar {
-<<<<<<< HEAD
     position: static;
     top: 0; left: 0; right: 0;
     height: 4.5rem;
-=======
     position: fixed;
     top: 0; left: 0; right: 0;
     height: 4.5em;
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
     padding: 0 5%;
     display: flex;
     align-items: center;
@@ -40,34 +36,48 @@ body {
     border-bottom: 1px solid #f0f2f1;
     z-index: 1000;
 }
-<<<<<<< HEAD
-.navbar h2 { color: #489c7f; font-size: 1.5rem; letter-spacing: -0.02em; }
+/* 2. Update Header Title (.navbar h2) */
+.navbar h2 {
+  font-family: Arial, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #489c7f;
+  margin: 0;
+  letter-spacing: normal;
+}
 .navbar nav ul { display: flex; gap: 2rem; list-style: none; }
-.navbar nav a { color: #a9afad; text-decoration: none; font-weight: 500; transition: color 0.2s; }
+/* 3. Update Navigation Links (.navbar nav a) */
+.navbar nav a {
+  font-family: Arial, sans-serif;
+  font-size: 0.95rem; /* Standardized sizing */
+  font-weight: 700;   /* Updated to match menu styling */
+  color: #a9afad;
+  text-decoration: none;
+  transition: color 0.2s;
+}
 .navbar nav a:hover, .navbar nav a.active { color: #ffffff; }
 .navbar nav a.active { font-weight: 700; color: #489c7f; }
-=======
 .navbar h2 { margin: 0; color: #489c7f; font-size: 1.5rem; letter-spacing: -0.02em; }
 .navbar nav ul { margin: 0; padding: 0; display: flex; gap: 2em; list-style: none; }
 .navbar nav a { color: #a9afad; text-decoration: none; font-weight: 500; transition: color 0.2s; }
-.navbar nav a:hover, .navbar nav a.active { color: #489c7f; }
+.navbar nav a:hover,
+.navbar nav a.active {
+  color: #489c7f;
+  font-weight: 700;
+}
 .navbar nav a.active { font-weight: 700; }
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 
 /* HERO SECTION */
 .hero-container {
     display: flex;
     align-items: center;
     max-width: 1200px;
-<<<<<<< HEAD
     margin: 4.5rem auto 0;
     padding: 4rem 1.5rem;
     gap: 3rem;
-=======
     margin: 4.5em auto 0;
     padding: 4rem 1.5rem;
     gap: 2rem;
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 }
 .hero-text-content { flex: 1; }
 .badge {
@@ -83,15 +93,12 @@ body {
     margin-bottom: 1.5rem;
 }
 .badge-icon { width: 14px; height: 14px; object-fit: contain; }
-<<<<<<< HEAD
 .hero-text-content h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin-bottom: 1.5rem; line-height: 1.15; letter-spacing: -0.03em; }
 .green-text { color: #0c4a34; display: block; }
 .hero-text-content p { color: #5c6260; line-height: 1.6; margin-bottom: 2.5rem; }
-=======
 .hero-text-content h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: 0 0 1.5rem; line-height: 1.15; letter-spacing: -0.03em; }
 .green-text { color: #0c4a34; display: block; }
 .hero-text-content p { color: #5c6260; line-height: 1.6; margin: 0 0 2.5rem; }
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
 .hero-actions .btn-primary, .hero-actions .btn-secondary {
     padding: 0.8rem 1.8rem;
@@ -101,11 +108,9 @@ body {
     transition: 0.2s;
     text-decoration: none;
     display: inline-block;
-<<<<<<< HEAD
     cursor: pointer;
-=======
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 }
+
 .btn-primary { background: #0c4a34; color: #fff; border: none; }
 .btn-primary:hover { background: #083525; }
 .btn-secondary { background: transparent; color: #1a1c1b; border: 1px solid #bcbfbc; }
@@ -121,7 +126,6 @@ body {
     justify-content: center;
     align-items: center;
     padding: 4rem 1.5rem;
-<<<<<<< HEAD
     gap: 10rem;
 }
 .story-image-container, .Our-Story article { flex: 1; max-width: 500px; }
@@ -141,7 +145,6 @@ body {
 .Fresh-Favorites article h3 { font-size: 1.2rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; }
 .Fresh-Favorites article h3 span { font-size: 0.7rem; background: #e6f4ea; color: #137333; padding: 0.2rem 0.5rem; border-radius: 4px; text-transform: uppercase; }
 .Fresh-Favorites article p { color: #5c6260; line-height: 1.5; }
-=======
     gap: 4rem;
 }
 .Our-Story img, .Our-Story article { width: 100%; max-width: 500px; }
@@ -162,12 +165,10 @@ body {
 .Fresh-Favorites article h3 { font-size: 1.2rem; margin: 0 0 0.5rem; display: flex; align-items: center; justify-content: space-between; }
 .Fresh-Favorites article h3 span { font-size: 0.7rem; background: #e6f4ea; color: #137333; padding: 0.2rem 0.5rem; border-radius: 4px; text-transform: uppercase; }
 .Fresh-Favorites article p { color: #5c6260; line-height: 1.5; margin: 0 0 1rem; }
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 .Fresh-Favorites article::after { position: absolute; top: 1.5rem; right: 1.5rem; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); color: #0c4a34; font-weight: 700; font-size: 0.85rem; padding: 0.3rem 0.6rem; border-radius: 20px; border: 1px solid #dcdfdc; }
 .Menu-Item-1::after { content: "₹200"; }
 .Menu-Item-2::after { content: "₹300"; }
 .Menu-Item-3::after { content: "₹150"; }
-<<<<<<< HEAD
 .menu-cta { text-align: center; margin-top: 2.5rem; }         
 .menu-cta button { background: transparent; color: #0c4a34; border: 1px solid #0c4a34; padding: 0.8rem 2rem; font-weight: 600; border-radius: 6px; cursor: pointer; transition: 0.2s; }
 .menu-cta button:hover { background: #0c4a34; color: #fff; }
@@ -180,7 +181,6 @@ body {
 .find-us-card .section-desc { color: #5c6260; margin-bottom: 2rem; }
 .contact-info-wrapper { font-style: normal; }
 .contact-list { display: flex; flex-direction: column; gap: 1.5rem; }
-=======
 .Fresh-Favorites section button { grid-column: 1 / -1; justify-self: center; background: transparent; color: #0c4a34; border: 1px solid #0c4a34; padding: 0.8rem 2rem; font-weight: 600; border-radius: 6px; cursor: pointer; transition: 0.2s; }
 .Fresh-Favorites section button:hover { background: #0c4a34; color: #fff; }
 
@@ -191,25 +191,21 @@ body {
 .find-us-card h2 { font-size: 1.8rem; margin: 0 0 0.75rem; letter-spacing: -0.02em; }
 .find-us-card .section-desc { color: #5c6260; margin: 0 0 2rem; }
 .contact-list { display: flex; flex-direction: column; gap: 1.5rem; padding: 0; list-style: none; }
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 .contact-row { display: flex; align-items: flex-start; gap: 1rem; }
 .text-group { display: flex; flex-direction: column; gap: 0.2rem; }
 .icon-link { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: #eef1f0; flex-shrink: 0; transition: background 0.2s; }
 .icon-link:hover { background: #dce2e0; }
 .icon-img { width: 20px; height: 20px; object-fit: contain; }
-<<<<<<< HEAD
+
 .text-group .label { font-weight: 700; }
 .text-group .value { color: #5c6260; line-height: 1.4; }
-=======
 .text-group .label { margin: 0; font-weight: 700; }
 .text-group .value { margin: 0; color: #5c6260; line-height: 1.4; }
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 .map-container { flex: 1.2; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid #eef1f0; }
 .map-image { width: 100%; height: 320px; object-fit: cover; display: block; }
 
 /* FOOTER */
 footer { background: #eaeded; padding: 2rem 1rem; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
-<<<<<<< HEAD
 footer h3 { color: #0c4a34; font-size: 1.2rem; }
 .footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.5rem; }
 footer a { color: #5c6260; text-decoration: none; font-weight: 500; transition: color 0.2s; }
@@ -217,7 +213,7 @@ footer a:hover { color: #0c4a34; }
 footer .copyright { font-size: 0.85rem; color: #8a918f; text-align: center; }
 
 /* MEDIA QUERIES */
-=======
+
 footer h3 { margin: 0; color: #0c4a34; font-size: 1.2rem; }
 .footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.5rem; }
 footer a { color: #5c6260; text-decoration: none; font-weight: 500; transition: color 0.2s; }
@@ -225,20 +221,17 @@ footer a:hover { color: #0c4a34; }
 footer .copyright { margin: 0; font-size: 0.85rem; color: #8a918f; text-align: center; }
 
 /* MEDIA QUERIES FOR DEVICE COMPATIBILITY */
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
 @media (max-width: 992px) {
     .hero-container, .Our-Story, .find-us-card { 
         flex-direction: column; 
         text-align: center; 
     }
-    
-<<<<<<< HEAD
+
     .contact-list {
         align-items: center; 
         width: 100%;
     }
 
-=======
     /* Forces the contact list to take full width and stack its rows cleanly */
     .contact-list {
         display: flex;
@@ -249,16 +242,12 @@ footer .copyright { margin: 0; font-size: 0.85rem; color: #8a918f; text-align: c
     }
 
     /* Keeps individual row content aligned cleanly while centering the row box */
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
     .contact-row { 
         justify-content: flex-start; 
         text-align: left; 
         width: 100%;
         max-width: 320px; 
-<<<<<<< HEAD
-=======
         margin: 0 auto; 
->>>>>>> d2204def7868cf978fd983d8ab3d606699db3de0
     }
     
     .hero-actions { 

@@ -19,6 +19,7 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: 1rem;
+  padding-top: 80px; /* Adjust this pixel value to match your fixed header height */
 }
 
 .menu-layout {
