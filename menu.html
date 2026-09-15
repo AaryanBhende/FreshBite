@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu & Pre-Order - FreshBite Cafe</title>
+    <link rel="icon" type="image/x-icon" href="eco.svg">
+    <link rel="stylesheet" href="Home.css">
+    <link rel="stylesheet" href="menu.css">
+</head>
+<body>
+    <header class="navbar">
+        <h2>FreshBite Cafe</h2>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="index.html#our-story">About</a></li>
+                <li><a href="menu.html" class="active">Menu</a></li>
+                <li><a href="index.html#find-us">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="menu-main">
+        <section class="menu-layout">
+            <section class="catalog-section">
+                <div class="catalog-top-bar">
+                    <div class="menu-header">
+                        <h1>Our Seasonal <span class="green-text">Menu</span></h1>
+                    </div>
+                    <div class="controls-wrapper">
+                        <div class="category-filters" id="categoryFilters">
+                            <button type="button" class="filter-btn active" data-category="All">All</button>
+                            <button type="button" class="filter-btn" data-category="Vegetarian">Vegetarian</button>
+                            <button type="button" class="filter-btn" data-category="Vegan">Vegan</button>
+                            <button type="button" class="filter-btn" data-category="Gluten-Free">Gluten-Free</button>
+                        </div>
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Search menu by title or ingredient..." aria-label="Search Menu">
+                        </div>
+                    </div>
+                </div>
+                <h2>Browse Dishes</h2>
+                <div id="catalogGrid" class="catalog-grid"></div>
+            </section>
+
+            <aside class="order-sidebar">
+                <div class="sidebar-card">
+                    <h2 id="formTitle">Add Custom Dish / Order</h2>
+                    <div id="formFeedback" class="feedback-container hidden"></div>
+                    <form id="orderForm" novalidate>
+                        <input type="hidden" id="orderId">
+                        <div class="form-group">
+                            <label for="itemName">Dish Name *</label>
+                            <input type="text" id="itemName" list="menuOptions" placeholder="Select or type item name" required>
+                            <datalist id="menuOptions">
+                                <option value="Avocado Harvest Toast"></option>
+                                <option value="Signature Acai Bowl"></option>
+                                <option value="Artisan Latte & Croissant"></option>
+                                <option value="Grilled Chicken Bowl"></option>
+                            </datalist>
+                        </div>
+                        <div class="form-row" style="display:flex;">
+                            <div class="form-group flex-1">
+                                <label>Category</label>
+                                <span id="displayCategory" class="value">None</span>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Price (₹)</label>
+                                <span id="displayPrice" class="value">₹0</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="itemQuantity">Qty *</label>
+                            <input type="number" id="itemQuantity" min="1" value="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="itemNotes">Customization Notes</label>
+                            <textarea id="itemNotes" rows="2" placeholder="e.g. Extra dressing, no onions..."></textarea>
+                        </div>
+                        <div class="form-actions" style="display:flex;">
+                            <button type="submit" id="submitBtn" class="btn-primary">Add to Order</button>
+                            <button type="button" id="cancelEditBtn" class="btn-secondary hidden">Cancel Edit</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="sidebar-card orders-summary-card">
+                    <h2>Your Order Summary</h2>
+                    <div id="ordersList" class="orders-list"></div>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <div id="deleteModal" class="modal-backdrop hidden">
+        <div class="modal-content">
+            <h3>Remove Item?</h3>
+            <p>Are you sure you want to remove this item from your order list?</p>
+            <div class="modal-actions">
+                <button id="cancelDeleteBtn" class="btn-secondary">Cancel</button>
+                <button id="confirmDeleteBtn" class="btn-danger">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <h3>FreshBite Cafe</h3>
+        <nav class="footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Instagram</a>
+            <a href="#">Facebook</a>
+        </nav>
+        <p class="copyright">© 2026 FreshBite Cafe. Nourishing your urban lifestyle.</p>
+    </footer>
+
+    <script src="menu.js"></script>
+</body>
+</html>

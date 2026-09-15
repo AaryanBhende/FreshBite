@@ -3,57 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>FreshBite</title>
+    <link rel="icon" type="image/x-icon" href="eco.svg">
     <link rel="stylesheet" href="Home.css">
-    
 </head>
 <body>
     <header class="navbar">
-    <h2>FreshBite Cafe</h2>
-    <nav>
-        <ul>
-            <li><a href="#" class="active">Home</a></li>
-            <li><a href="#">About</a></li>
-            <li><a href="#">Menu</a></li>
-            <li><a href="#">Contact</a></li>
-        </ul>
-    </nav>
+        <h2>FreshBite Cafe</h2>
+        <nav>
+            <ul>
+                <li><a href="#" class="active">Home</a></li>
+                <li><a href="#our-story">About</a></li>
+                <li><a href="#menu">Menu</a></li>
+                <li><a href="#find-us">Contact</a></li>
+            </ul>
+        </nav>
     </header>
     
     <main>
         <section class="hero-container">
-  
-        <article class="hero-text-content">
-            <span class="badge">
-            <img src="eco.svg" alt="Leaf Icon" class="badge-icon">
-                Locally Sourced
-            </span>
-            <h1>Eat Fresh, <span class="green-text">Feel Vibrant</span></h1>
-            <p>Nourishing your urban lifestyle with locally sourced, fresh ingredients.</p>
-            
-            <div class="hero-actions">
-                <button type="button" class="btn-primary">View Menu</button> 
-                <a href="#our-story" class="btn-secondary">Our Story</a>
-            </div>
-        </article>
+            <article class="hero-text-content">
+                <span class="badge">
+                    <img src="eco.svg" alt="Leaf Icon" class="badge-icon">
+                    Locally Sourced
+                </span>
+                <h1>Eat Fresh, <span class="green-text">Feel Vibrant</span></h1>
+                <p>Nourishing your urban lifestyle with locally sourced, fresh ingredients.</p>
+                
+                <div class="hero-actions">
+                    <button type="button" class="btn-primary">View Menu</button> 
+                    <a href="#our-story" class="btn-secondary">Our Story</a>
+                </div>
+            </article>
 
-        <figure class="hero-image-container">
-            <img alt="Salad Topped with Grilled Chicken Breast" src="Chicken-Salad.png">
-        </figure>
-        
-    </section>
+            <figure class="hero-image-container">
+                <img alt="Salad Topped with Grilled Chicken Breast" src="Chicken-Salad.png">
+            </figure>
+        </section>
 
         <section id="our-story" class="Our-Story">
-            <img alt="Interior of Fresh Bite Cafe" src="Fresh-Bite-Interior.png">
+            <figure class="story-image-container">
+                <img alt="Interior of Fresh Bite Cafe" src="Fresh-Bite-Interior.png">
+            </figure>
             <article>
                 <h2>Our Story</h2>
-                <p>At FreshBite, we believe that healthy food should be delicious and accessible. Since our opening, we have been dedicated to serving vibrant dishes that energize and inspire. <span>Every ingredient is chosen with care, partnering with local farmers to bring the freshest flavors directly to your table in the heart of the city.</p>
+                <p>At FreshBite, we believe that healthy food should be delicious and accessible. Since our opening, we have been dedicated to serving vibrant dishes that energize and inspire.</p>
+                <p>Every ingredient is chosen with care, partnering with local farmers to bring the freshest flavors directly to your table in the heart of the city.</p>
             </article>
         </section>
-        <header class="Fresh-Favorites">
-            <h2>Fresh Favorites</h2>
-            <p>Curated selections from our seasonal menu, designed to nourish and delight.</p>
-            <section>
+
+        <section id="menu" class="Fresh-Favorites">
+            <header class="section-header">
+                <h2>Fresh Favorites</h2>
+                <p>Curated selections from our seasonal menu, designed to nourish and delight.</p>
+            </header>
+            <div class="menu-grid">
                 <article class="Menu-Item-1">
                     <img alt="Avocado Egg Toast" src="Avocado-Egg-Toast.png">
                     <h3>Avocado Harvest Toast</h3>
@@ -61,18 +65,21 @@
                 </article>
                 <article class="Menu-Item-2">
                     <img alt="Acai Bowl" src="Acai-Bowl.png">
-                    <h3>Signature Acai Bowl<span>Vegan</span></h3>
+                    <h3>Signature Acai Bowl <span>Vegan</span></h3>
                     <p>Granola, seasonal berries, honey drizzle.</p>
                 </article>
                 <article class="Menu-Item-3">
-                    <img alt="" src="Latte-Croissant.png">
+                    <img alt="Latte and Croissant" src="Latte-Croissant.png">
                     <h3>Artisan Latte & Croissant</h3>
                     <p>Freshly brewed coffee with a buttery croissant.</p>
                 </article>
-                <button>View Full Menu</button>
-            </section>
-        </header>
-        <section class="Find-Us-Section">
+            </div>
+            <div class="menu-cta">
+                <button type="button">View Full Menu</button>
+            </div>
+        </section>
+
+        <section id="find-us" class="Find-Us-Section">
             <div class="find-us-card">
                 <div class="contact-details">
                     <h2>Find Us</h2>
@@ -80,7 +87,7 @@
                     <address class="contact-info-wrapper">
                         <dl class="contact-list">
                             <div class="contact-row">
-                                <a href="" class="icon-link" aria-label="Location">
+                                <a href="#" class="icon-link" aria-label="Location">
                                     <img src="icon-location.svg" alt="" aria-hidden="true" class="icon-img">
                                 </a>
                                 <div class="text-group">
@@ -90,7 +97,7 @@
                             </div>
 
                             <div class="contact-row">
-                                <a href="" class="icon-link" aria-label="Phone">
+                                <a href="#" class="icon-link" aria-label="Phone">
                                     <img src="icon-call.svg" alt="" aria-hidden="true" class="icon-img">
                                 </a>
                                 <div class="text-group">
@@ -100,7 +107,7 @@
                             </div>
 
                             <div class="contact-row">
-                                <a href="" class="icon-link" aria-label="Email">
+                                <a href="#" class="icon-link" aria-label="Email">
                                     <img src="icon-email.svg" alt="" aria-hidden="true" class="icon-img">
                                 </a>
                                 <div class="text-group">
@@ -110,28 +117,23 @@
                             </div>
                         </dl>
                     </address>
-
-
-
                 </div>
                 <figure class="map-container">
                     <img alt="Market Street District FreshBite Location Map" src="Map.png" class="map-image">
                 </figure>
-                
             </div>
         </section>
     </main>
+
     <footer>
-    <h3>FreshBite Cafe</h3>
-    <nav class="footer-links">
-        <a href="#">Privacy Policy</a>
-        <a href="#">Terms of Service</a>      
-        <a href="#">Instagram</a>      
-        <a href="#">Facebook</a>      
-    </nav>
-
-    <p class="copyright">© 2026 FreshBite Cafe. Nourishing your urban lifestyle.</p>
-</footer>
-
+        <h3>FreshBite Cafe</h3>
+        <nav class="footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>      
+            <a href="#">Instagram</a>      
+            <a href="#">Facebook</a>      
+        </nav>
+        <p class="copyright">© 2026 FreshBite Cafe. Nourishing your urban lifestyle.</p>
+    </footer>
 </body>
 </html>
