@@ -1,19 +1,19 @@
 document.addEventListener('DOMContentLoaded', () => {
     const catalogDishes = [
-        { id: 'cat-1', title: 'Avocado Harvest Toast', category: 'Vegetarian', description: 'Smashed avocado, poached egg, microgreens on sourdough.', price: 280, img: 'Avocado-Egg-Toast.png' },
-        { id: 'cat-2', title: 'Signature Acai Bowl', category: 'Vegan', description: 'Organic acai, crunchy granola, seasonal berries, honey drizzle.', price: 320, img: 'Acai-Bowl.png' },
-        { id: 'cat-3', title: 'Artisan Latte & Croissant', category: 'Vegetarian', description: 'Freshly brewed coffee paired with a buttery French croissant.', price: 220, img: 'Latte-Croissant.png' },
-        { id: 'cat-4', title: 'Grilled Chicken Bowl', category: 'Gluten-Free', description: 'Marinated chicken breast, quinoa, kale, and lemon vinaigrette.', price: 350, img: 'Chicken-Salad.png' },
-        { id: 'cat-5', title: 'Truffle Mushroom Flatbread', category: 'Vegetarian', description: 'Wild mushrooms, truffle oil, mozzarella, and fresh arugula on a crispy crust.', price: 340, img: 'Mushroom-Flatbread.png' },
-        { id: 'cat-6', title: 'Smoked Salmon Bagel', category: 'None', description: 'Toasted whole-wheat bagel with cream cheese, capers, red onion, and premium smoked salmon.', price: 390, img: 'Salmon-Bagel.png' },
-        { id: 'cat-7', title: 'Almond Butter & Banana Toast', category: 'Vegan', description: 'House-made almond butter, sliced bananas, chia seeds, and maple syrup on rustic rye.', price: 260, img: 'Almond-Banana-Toast.png' },
-        { id: 'cat-8', title: 'Matcha Chia Seed Pudding', category: 'Vegan', description: 'Organic matcha infused chia pudding, topped with coconut flakes and fresh mango.', price: 290, img: 'Matcha-Chia-Pudding.png' },
-        { id: 'cat-9', title: 'Mediterranean Hummus Wrap', category: 'Vegetarian', description: 'Creamy hummus, cucumber, kalamata olives, feta, and roasted peppers in a spinach tortilla.', price: 300, img: 'Hummus-Wrap.png' },
-        { id: 'cat-10', title: 'Spicy Shakshuka', category: 'Vegetarian', description: 'Two poached eggs in a simmering spiced tomato and pepper sauce, served with warm pita.', price: 310, img: 'Shakshuka.png' },
-        { id: 'cat-11', title: 'Sweet Potato & Black Bean Bowl', category: 'Gluten-Free', description: 'Roasted sweet potatoes, black beans, avocado, and brown rice with a zesty cilantro-lime dressing.', price: 330, img: 'Sweet-Potato-Bowl.png' },
-        { id: 'cat-12', title: 'Brioche French Toast', category: 'Vegetarian', description: 'Thick-cut brioche soaked in vanilla custard, served with whipped cream and mixed berry compote.', price: 280, img: 'French-Toast.png' },
-        { id: 'cat-13', title: 'Turkey Avocado Club', category: 'None', description: 'Smoked turkey breast, crisp bacon, avocado, lettuce, tomato, and garlic aioli on sourdough.', price: 360, img: 'Turkey-Club.png' },
-        { id: 'cat-14', title: 'Iced Vanilla Oat Milk Matcha', category: 'Vegan', description: 'Premium ceremonial grade matcha whisked with creamy oat milk and a touch of vanilla syrup.', price: 240, img: 'Iced-Matcha.png' }
+        { id: 'cat-1', title: 'Avocado Harvest Toast', category: 'Vegetarian', description: 'Smashed avocado, poached egg, microgreens on sourdough.', price: 280, img: 'assets/images/Avocado-Egg-Toast.png' },
+        { id: 'cat-2', title: 'Signature Acai Bowl', category: 'Vegan', description: 'Organic acai, crunchy granola, seasonal berries, honey drizzle.', price: 320, img: 'assets/images/Acai-Bowl.png' },
+        { id: 'cat-3', title: 'Artisan Latte & Croissant', category: 'Vegetarian', description: 'Freshly brewed coffee paired with a buttery French croissant.', price: 220, img: 'assets/images/Latte-Croissant.png' },
+        { id: 'cat-4', title: 'Grilled Chicken Bowl', category: 'Gluten-Free', description: 'Marinated chicken breast, quinoa, kale, and lemon vinaigrette.', price: 350, img: 'assets/images/Chicken-Salad.png' },
+        { id: 'cat-5', title: 'Truffle Mushroom Flatbread', category: 'Vegetarian', description: 'Wild mushrooms, truffle oil, mozzarella, and fresh arugula on a crispy crust.', price: 340, img: 'assets/images/Mushroom-Flatbread.png' },
+        { id: 'cat-6', title: 'Smoked Salmon Bagel', category: 'None', description: 'Toasted whole-wheat bagel with cream cheese, capers, red onion, and premium smoked salmon.', price: 390, img: 'assets/images/Salmon-Bagel.png' },
+        { id: 'cat-7', title: 'Almond Butter & Banana Toast', category: 'Vegan', description: 'House-made almond butter, sliced bananas, chia seeds, and maple syrup on rustic rye.', price: 260, img: 'assets/images/Almond-Banana-Toast.png' },
+        { id: 'cat-8', title: 'Matcha Chia Seed Pudding', category: 'Vegan', description: 'Organic matcha infused chia pudding, topped with coconut flakes and fresh mango.', price: 290, img: 'assets/images/Matcha-Chia-Pudding.png' },
+        { id: 'cat-9', title: 'Mediterranean Hummus Wrap', category: 'Vegetarian', description: 'Creamy hummus, cucumber, kalamata olives, feta, and roasted peppers in a spinach tortilla.', price: 300, img: 'assets/images/Hummus-Wrap.png' },
+        { id: 'cat-10', title: 'Spicy Shakshuka', category: 'Vegetarian', description: 'Two poached eggs in a simmering spiced tomato and pepper sauce, served with warm pita.', price: 310, img: 'assets/images/Shakshuka.png' },
+        { id: 'cat-11', title: 'Sweet Potato & Black Bean Bowl', category: 'Gluten-Free', description: 'Roasted sweet potatoes, black beans, avocado, and brown rice with a zesty cilantro-lime dressing.', price: 330, img: 'assets/images/Sweet-Potato-Bowl.png' },
+        { id: 'cat-12', title: 'Brioche French Toast', category: 'Vegetarian', description: 'Thick-cut brioche soaked in vanilla custard, served with whipped cream and mixed berry compote.', price: 280, img: 'assets/images/French-Toast.png' },
+        { id: 'cat-13', title: 'Turkey Avocado Club', category: 'None', description: 'Smoked turkey breast, crisp bacon, avocado, lettuce, tomato, and garlic aioli on sourdough.', price: 360, img: 'assets/images/Turkey-Club.png' },
+        { id: 'cat-14', title: 'Iced Vanilla Oat Milk Matcha', category: 'Vegan', description: 'Premium ceremonial grade matcha whisked with creamy oat milk and a touch of vanilla syrup.', price: 240, img: 'assets/images/Iced-Matcha.png' }
 
     ];
 
