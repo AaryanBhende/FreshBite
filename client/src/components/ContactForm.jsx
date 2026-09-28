@@ -3,30 +3,59 @@ import React, { useState } from 'react';
 export default function ContactForm() {
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitted(true);
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('http://localhost:5000/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSubmitted(true);
+      } else {
+        setError(data.error || 'Failed to submit form.');
+      }
+    } catch (err) {
+      setError('Server unreachable. Please check if your backend is running.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="contact-details">
       <h2>Find Us</h2>
       <p className="section-desc">Drop by for a fresh bite or get in touch for catering inquiries.</p>
-      
+
       {submitted ? (
         <div style={{ padding: '1rem', background: '#e6f4ea', color: '#137333', borderRadius: '8px' }}>
           Thank you! We have received your message and will get back to you shortly.
         </div>
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+          {error && (
+            <div style={{ padding: '0.75rem', background: '#fce8e6', color: '#c5221f', borderRadius: '8px' }}>
+              {error}
+            </div>
+          )}
           <input
             type="text"
             placeholder="Your Name"
             required
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            
           />
           <input
             type="email"
@@ -42,8 +71,8 @@ export default function ContactForm() {
             value={formData.message}
             onChange={(e) => setFormData({ ...formData, message: e.target.value })}
           />
-          <button type="submit" className="btn-primary" style={{ width: 'fit-content' }}>
-            Send Message
+          <button type="submit" className="btn-primary" style={{ width: 'fit-content' }} disabled={loading}>
+            {loading ? 'Sending...' : 'Send Message'}
           </button>
         </form>
       )}
