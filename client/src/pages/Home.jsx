@@ -1,16 +1,18 @@
-import React from 'react';
+import { useEffect } from 'react';
 import Hero from '../components/Hero';
 import About from './About';
 import Favorites from './Favorites';
-import Contact from './Contact';
 
 export default function Home() {
+  useEffect(() => {
+    window.scrollTo({ top: 30, behavior: 'smooth' });
+  }, []);
+
   return (
     <main>
       <Hero />
-      <About />
+      <About storyOnly={true} />
       <Favorites />
-      <Contact />
     </main>
   );
 }

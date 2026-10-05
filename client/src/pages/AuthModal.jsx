@@ -1,4 +1,5 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
+import { GoogleLogin } from '@react-oauth/google';
 import { AuthContext } from '../context/AuthContext';
 
 export default function AuthModal({ isOpen, onClose }) {
@@ -7,97 +8,138 @@ export default function AuthModal({ isOpen, onClose }) {
   const [error, setError] = useState('');
   const { login } = useContext(AuthContext);
 
+  const resetForm = () => {
+    setFormData({ name: '', email: '', password: '' });
+    setError('');
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
     const payload = {
       name: formData.name.trim(),
       email: formData.email.trim(),
-      password: formData.password.trim()
+      password: formData.password.trim(),
     };
-
     try {
-      const res = await fetch(`http://localhost:5000${endpoint}`, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
-
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Authentication failed');
       }
-
       login(data.user, data.token);
-      onClose();
+      handleClose();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Google login failed');
+      }
+      login(data.user, data.token);
+      handleClose();
     } catch (err) {
       setError(err.message);
     }
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content auth-modal">
-        <h3>{isRegister ? 'Create Account' : 'Welcome Back'}</h3>
-        {error && (
-          <div style={{ color: '#d9534f', background: '#fdf7f7', padding: '0.5rem', borderRadius: '4px', marginBottom: '1rem' }}>
-            {error}
-          </div>
-        )}
+    <div className="auth-backdrop">
+      <div className="auth-modal">
+        <h3 className="auth-title">{isRegister ? 'Create Account' : 'Welcome Back'}</h3>
+
+        {error && <div className="auth-error">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           {isRegister && (
-            <div className="form-group">
-              <label>Name</label>
+            <div className="auth-form-group">
+              <label className="auth-label">Name</label>
               <input
                 type="text"
                 required
+                placeholder="Your Full Name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="auth-input"
               />
             </div>
           )}
 
-          <div className="form-group">
-            <label>Email</label>
+          <div className="auth-form-group">
+            <label className="auth-label">Email</label>
             <input
               type="email"
               required
+              placeholder="email@example.com"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="auth-input"
             />
           </div>
 
-          <div className="form-group">
-            <label>Password</label>
+          <div className="auth-form-group">
+            <label className="auth-label">Password</label>
             <input
               type="password"
               required
+              placeholder=""
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="auth-input"
             />
           </div>
 
-          <button className="btn-primary" type="submit" style={{ marginTop: '1rem', width: '100%' }}>
+          <button type="submit" className="auth-btn-primary">
             {isRegister ? 'Sign Up' : 'Log In'}
           </button>
         </form>
 
+        <div className="auth-google">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('Google Sign-In was unsuccessful.')}
+            useOneTap
+          />
+        </div>
+
         <button
-          style={{ marginTop: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: '#555' }}
+          className="auth-btn-toggle"
           onClick={() => {
             setIsRegister(!isRegister);
-            setError('');
+            resetForm();
           }}
         >
           {isRegister ? 'Already have an account? Log In' : "Don't have an account? Sign Up"}
         </button>
 
-        <button className="btn-secondary" onClick={onClose} style={{ marginTop: '0.5rem', width: '100%' }}>
+        <button className="auth-btn-cancel" onClick={handleClose}>
           Cancel
         </button>
       </div>

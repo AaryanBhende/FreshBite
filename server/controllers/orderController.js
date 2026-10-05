@@ -2,7 +2,13 @@ import pool from '../config/db.js';
 
 export const getOrders = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+    // Select users.name (or users.username if your column is named username)
+    const [rows] = await pool.query(`
+      SELECT orders.*, users.name AS username 
+      FROM orders 
+      LEFT JOIN users ON orders.user_id = users.id 
+      ORDER BY orders.created_at DESC
+    `);
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -25,16 +31,14 @@ export const createOrder = async (req, res) => {
         completed,
         order_type,
         address,
-        coordinates
+        coordinates,
       } = item;
-
       const orderCategory = category || 'None';
       const orderType = order_type || 'Dine In';
-
       await pool.query(
         `INSERT INTO orders 
-         (id, order_id, user_id, title, category, price, quantity, notes, completed, order_type, address, coordinates) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id,order_id,user_id,title,category,price,quantity,notes,completed,order_type,address,coordinates) 
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id,
           order_id,
@@ -47,7 +51,7 @@ export const createOrder = async (req, res) => {
           completed ? 1 : 0,
           orderType,
           address || null,
-          coordinates || null
+          coordinates || null,
         ]
       );
     }
@@ -70,15 +74,11 @@ export const updateOrder = async (req, res) => {
     completed,
     order_type,
     address,
-    coordinates
+    coordinates,
   } = req.body;
-
   try {
     await pool.query(
-      `UPDATE orders SET 
-        order_id=?, user_id=?, title=?, category=?, price=?, quantity=?, notes=?, 
-        completed=?, order_type=?, address=?, coordinates=? 
-       WHERE id=?`,
+      `UPDATE orders SET order_id=?,user_id=?,title=?,category=?,price=?,quantity=?,notes=?,completed=?,order_type=?,address=?,coordinates=? WHERE id=?`,
       [
         order_id,
         user_id,
@@ -91,7 +91,7 @@ export const updateOrder = async (req, res) => {
         order_type,
         address,
         coordinates,
-        id
+        id,
       ]
     );
     res.json({ message: 'Order updated successfully' });

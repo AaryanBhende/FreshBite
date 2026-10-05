@@ -1,16 +1,56 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ProductCard from './ProductCard';
 import '../assets/style/menu.css';
+
 export default function ProductGrid({ items, onSelectDish }) {
+  const [expandedDish, setExpandedDish] = useState(null);
+  const closeExpanded = () => setExpandedDish(null);
+
+  useEffect(() => {
+    if (!expandedDish) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeExpanded();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [expandedDish]);
+
   if (items.length === 0) {
     return <p className="no-items">No dishes match your search/filter.</p>;
   }
 
   return (
-    <div className="catalog-grid">
-      {items.map((dish) => (
-        <ProductCard key={dish.id} dish={dish} onSelect={onSelectDish} />
-      ))}
-    </div>
+    <>
+      <div className="catalog-grid">
+        {items.map((dish) => (
+          <ProductCard
+            key={dish.id}
+            id={`dish-${dish.id}`}
+            dish={dish}
+            onSelect={onSelectDish}
+            onExpand={setExpandedDish}
+          />
+        ))}
+      </div>
+
+      {expandedDish && (
+        <div className="modal-backdrop card-expand-backdrop" onClick={closeExpanded}>
+          <div className="card-expand-wrap" onClick={(e) => e.stopPropagation()}>
+            <ProductCard
+              dish={expandedDish}
+              onSelect={onSelectDish}
+              onClose={closeExpanded}
+              expanded
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

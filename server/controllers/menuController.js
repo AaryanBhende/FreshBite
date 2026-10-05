@@ -6,6 +6,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const toNum = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 export const getMenuItems = async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM menu_items');
@@ -16,17 +22,36 @@ export const getMenuItems = async (req, res) => {
 };
 
 export const addMenuItem = async (req, res) => {
-  const { title, category, description, price } = req.body;
+  let { title, category, description, price, calories, protein, carbs, fats, fibre } = req.body;
   const id = `cat-${Date.now()}`;
-  
-  // Set image path if uploaded, or fall back to default
-  const imgPath = req.file ? `assets/images/${req.file.filename}` : 'assets/images/placeholder.png';
+
+  if (Array.isArray(category)) {
+    category = category.join(',');
+  }
+
+  const imgPath = req.file
+    ? `assets/images/${req.file.filename}`
+    : 'assets/images/placeholder.png';
 
   try {
     await pool.query(
-      'INSERT INTO menu_items(id, title, category, description, price, img) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, title, category, description, price, imgPath]
+      `INSERT INTO menu_items (id, title, category, description, price, img, calories, protein, carbs, fats, fibre) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        title || '',
+        category || '',
+        description || '',
+        toNum(price),
+        imgPath,
+        toNum(calories),
+        toNum(protein),
+        toNum(carbs),
+        toNum(fats),
+        toNum(fibre),
+      ]
     );
+
     res.status(201).json({ message: 'Menu item added successfully', id });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -35,16 +60,19 @@ export const addMenuItem = async (req, res) => {
 
 export const updateMenuItem = async (req, res) => {
   const { id } = req.params;
-  const { title, category, description, price, currentImg } = req.body;
+  let { title, category, description, price, currentImg, calories, protein, carbs, fats, fibre } = req.body;
+
+  if (Array.isArray(category)) {
+    category = category.join(',');
+  }
 
   try {
-    let imgPath = currentImg;
+    let imgPath = currentImg || '';
 
-    // If a new image was uploaded
     if (req.file) {
       imgPath = `assets/images/${req.file.filename}`;
 
-      // Delete the old image file from disk if it exists and is not placeholder
+      // Remove previous image if it exists and isn't the placeholder
       if (currentImg && !currentImg.includes('placeholder.png')) {
         const oldFilePath = path.join(__dirname, '../../client/public', currentImg);
         if (fs.existsSync(oldFilePath)) {
@@ -54,8 +82,22 @@ export const updateMenuItem = async (req, res) => {
     }
 
     await pool.query(
-      'UPDATE menu_items SET title=?, category=?, description=?, price=?, img=? WHERE id=?',
-      [title, category, description, price, imgPath, id]
+      `UPDATE menu_items
+       SET title=?, category=?, description=?, price=?, img=?, calories=?, protein=?, carbs=?, fats=?, fibre=?
+       WHERE id=?`,
+      [
+        title || '',
+        category || '',
+        description || '',
+        toNum(price),
+        imgPath,
+        toNum(calories),
+        toNum(protein),
+        toNum(carbs),
+        toNum(fats),
+        toNum(fibre),
+        id,
+      ]
     );
 
     res.json({ message: 'Menu item updated successfully' });
@@ -66,9 +108,10 @@ export const updateMenuItem = async (req, res) => {
 
 export const deleteMenuItem = async (req, res) => {
   const { id } = req.params;
+
   try {
-    // Optionally delete image from disk
     const [rows] = await pool.query('SELECT img FROM menu_items WHERE id=?', [id]);
+
     if (rows.length > 0 && rows[0].img && !rows[0].img.includes('placeholder.png')) {
       const filePath = path.join(__dirname, '../../client/public', rows[0].img);
       if (fs.existsSync(filePath)) {
@@ -78,6 +121,30 @@ export const deleteMenuItem = async (req, res) => {
 
     await pool.query('DELETE FROM menu_items WHERE id=?', [id]);
     res.json({ message: 'Menu item deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getFavoriteItems = async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM menu_items WHERE is_favorite = 1');
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const setFavorite = async (req, res) => {
+  const { id } = req.params;
+  const isFavorite = req.body.isFavorite ? 1 : 0;
+  try {
+    const [result] = await pool.query(
+      'UPDATE menu_items SET is_favorite = ? WHERE id = ?',
+      [isFavorite, id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Item not found' });
+    res.json({ message: 'Favorite updated', isFavorite: !!isFavorite });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

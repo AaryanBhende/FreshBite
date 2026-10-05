@@ -1,4 +1,4 @@
-import React from 'react';
+import {useEffect} from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import ContactForm from '../components/ContactForm';
@@ -21,13 +21,20 @@ L.Marker.prototype.options.icon = DefaultIcon;
 const miramarLocation = [15.4800, 73.8080];
 
 export default function Contact() {
+  useEffect(() => {
+    window.scrollTo({
+      top: 70,
+      behavior: 'smooth' 
+    });
+  }, []);
+
   return (
     <main style={{ paddingTop: '4.5rem' }}>
       <section className="Find-Us-Section" id="find-us">
         <div className="find-us-card">
           <ContactForm />
           
-          <figure className="map-container">
+          <figure className="map-container" style={{ position: 'relative', zIndex: 1, overflow: 'hidden' }}>
             <MapContainer
               center={miramarLocation}
               zoom={15}

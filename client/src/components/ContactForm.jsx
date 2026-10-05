@@ -10,18 +10,13 @@ export default function ContactForm() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
-      const response = await fetch('http://localhost:5000/api/contact', {
+      const response = await fetch('/api/contact', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-
       const data = await response.json();
-
       if (response.ok) {
         setSubmitted(true);
       } else {
@@ -37,19 +32,17 @@ export default function ContactForm() {
   return (
     <div className="contact-details">
       <h2>Find Us</h2>
-      <p className="section-desc">Drop by for a fresh bite or get in touch for catering inquiries.</p>
+      <p className="section-desc">
+        Drop by for a fresh bite or get in touch for catering inquiries.
+      </p>
 
       {submitted ? (
-        <div style={{ padding: '1rem', background: '#e6f4ea', color: '#137333', borderRadius: '8px' }}>
+        <div className="contact-success">
           Thank you! We have received your message and will get back to you shortly.
         </div>
       ) : (
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
-          {error && (
-            <div style={{ padding: '0.75rem', background: '#fce8e6', color: '#c5221f', borderRadius: '8px' }}>
-              {error}
-            </div>
-          )}
+        <form onSubmit={handleSubmit} className="contact-form">
+          {error && <div className="contact-error">{error}</div>}
           <input
             type="text"
             placeholder="Your Name"
@@ -71,7 +64,7 @@ export default function ContactForm() {
             value={formData.message}
             onChange={(e) => setFormData({ ...formData, message: e.target.value })}
           />
-          <button type="submit" className="btn-primary" style={{ width: 'fit-content' }} disabled={loading}>
+          <button type="submit" className="btn-primary contact-submit" disabled={loading}>
             {loading ? 'Sending...' : 'Send Message'}
           </button>
         </form>
