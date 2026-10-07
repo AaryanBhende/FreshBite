@@ -9,6 +9,8 @@ import Favorites from './pages/Favorites';
 import Menu from './pages/Menu';
 import Contact from './pages/Contact';
 import AdminMenu from './pages/AdminMenu';
+import Profile from './pages/Profile';
+import OrderTracker from './pages/OrderTracker';
 
 export default function App() {
   return (
@@ -22,9 +24,11 @@ export default function App() {
           <Route path="/menu" element={<Menu />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/admin" element={<AdminMenu />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/track/:orderId" element={<OrderTracker />} />
         </Routes>
         <Footer />
       </Router>
     </AuthProvider>
   );
-}
+}

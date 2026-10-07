@@ -152,9 +152,14 @@ export default function Navbar() {
             <li className="navbar-auth-item">
               {user ? (
                 <div className="navbar-user-info">
-                  <span className="navbar-username">
+                  <NavLink
+                    to="/profile"
+                    className="navbar-username"
+                    onClick={closeMenu}
+                    title="My Profile"
+                  >
                     <strong>{user.name}</strong>
-                  </span>
+                  </NavLink>
                   <button
                     className="navbar-logout-btn"
                     onClick={() => {

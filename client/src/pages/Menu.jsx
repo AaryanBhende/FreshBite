@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useRef, useContext } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -84,6 +84,7 @@ export default function Menu() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState(null);
   const formRef = useRef(null);
 
   const [picks, setPicks] = useState([]);
@@ -288,6 +289,7 @@ export default function Menu() {
       if (res.ok) {
         setCart([]);
         localStorage.removeItem('freshbite_cart');
+        setLastOrderId(groupOrderId);
         fetchOrders();
         setShowSuccessModal(true);
       }
@@ -714,11 +716,20 @@ export default function Menu() {
       {showSuccessModal && (
         <div className="modal-backdrop">
           <div className="modal-content success-modal">
-            <h3>Order Placed!</h3>
+            <h3>Order Placed! 🎉</h3>
             <p>Your order has been placed successfully and is being prepared.</p>
             <div className="modal-actions">
-              <button className="btn-primary" onClick={() => setShowSuccessModal(false)}>
-                Great!
+              {lastOrderId && (
+                <Link
+                  className="btn-primary"
+                  to={`/track/${lastOrderId}`}
+                  onClick={() => setShowSuccessModal(false)}
+                >
+                  📍 Track My Order
+                </Link>
+              )}
+              <button className="btn-secondary" onClick={() => setShowSuccessModal(false)}>
+                Continue Ordering
               </button>
             </div>
           </div>
