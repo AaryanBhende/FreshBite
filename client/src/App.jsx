@@ -11,6 +11,7 @@ import Contact from './pages/Contact';
 import AdminMenu from './pages/AdminMenu';
 import Profile from './pages/Profile';
 import OrderTracker from './pages/OrderTracker';
+import Reservations from './pages/Reservations';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/favorites" element={<Favorites />} />
           <Route path="/menu" element={<Menu />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/reservations" element={<Reservations />} />
           <Route path="/admin" element={<AdminMenu />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/track/:orderId" element={<OrderTracker />} />

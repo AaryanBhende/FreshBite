@@ -1,0 +1,28 @@
+import express from 'express';
+import {
+  getAvailability,
+  createReservation,
+  getUserReservations,
+  getAdminReservations,
+  updateReservationStatus,
+  createWalkInReservation,
+} from '../controllers/reservationController.js';
+import { verifyToken, verifyAdmin, optionalAuth } from '../middleware/authMiddleware.js';
+
+const router = express.Router();
+
+// 1. Availability check endpoint (public, used by customer booking form)
+router.get('/availability', getAvailability);
+
+// 2. Customer booking endpoint (optional JWT: logs user_id if authenticated, or allows guest booking)
+router.post('/', optionalAuth, createReservation);
+
+// 3. Authenticated customer reservation history
+router.get('/user', verifyToken, getUserReservations);
+
+// 4. Admin Management Endpoints
+router.get('/admin', verifyAdmin, getAdminReservations);
+router.post('/admin/walkin', verifyAdmin, createWalkInReservation);
+router.put('/admin/:id/status', verifyAdmin, updateReservationStatus);
+
+export default router;

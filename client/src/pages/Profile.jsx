@@ -165,6 +165,112 @@ function OrderHistory({ token, onReorder }) {
   );
 }
 
+// ─── My Reservations tab ─────────────────────────────────────
+function UserReservations({ token }) {
+  const [reservations, setReservations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchReservations();
+  }, []);
+
+  const fetchReservations = async () => {
+    try {
+      const res = await fetch('/api/reservations/user', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error || 'Failed to fetch reservations.');
+        return;
+      }
+      setReservations(await res.json());
+    } catch {
+      setError('Could not connect to the server.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="profile-card">
+        <h2>Table Reservations</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          {[1, 2].map((n) => (
+            <div key={n} className="skeleton" style={{ height: 60, borderRadius: 10 }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="profile-card">
+        <h2>Table Reservations</h2>
+        <p style={{ color: '#c62828' }}>{error}</p>
+      </div>
+    );
+  }
+
+  if (reservations.length === 0) {
+    return (
+      <div className="profile-card">
+        <h2>Table Reservations</h2>
+        <div className="order-history-empty">
+          <p>You have no table reservations yet.</p>
+          <Link to="/reservations" style={{ color: 'var(--color-primary, #2e7d32)', fontWeight: 600 }}>
+            Reserve a Table Now →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="profile-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <h2 style={{ margin: 0, padding: 0, border: 'none' }}>Table Reservations</h2>
+        <Link to="/reservations" className="btn-primary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+          + Book New Table
+        </Link>
+      </div>
+      {reservations.map((r) => (
+        <div className="order-group" key={r.id}>
+          <div className="order-group-header">
+            <div className="order-group-meta">
+              <span className="order-group-id">{r.id}</span>
+              <span className="order-group-date">
+                📅 {r.reservation_date} at 🕒 {r.time_slot}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span className="order-group-type-badge badge-dine">
+                👥 {r.party_size} {r.party_size === 1 ? 'Guest' : 'Guests'}
+              </span>
+              <span className={`order-status-badge status-${r.status}`}>
+                {r.status}
+              </span>
+            </div>
+          </div>
+          <div style={{ padding: '0.8rem 1.2rem', fontSize: '0.88rem', color: '#555' }}>
+            <p style={{ margin: '0 0 0.35rem' }}>
+              <strong>Seating:</strong> {r.seating_pref}
+            </p>
+            {r.special_requests && (
+              <p style={{ margin: 0 }}>
+                <strong>Requests:</strong> <em>"{r.special_requests}"</em>
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── My Details tab ──────────────────────────────────────────
 function MyDetails({ user, token, onProfileUpdate }) {
   const [form, setForm] = useState({
@@ -414,6 +520,12 @@ export default function Profile() {
           >
             Order History
           </button>
+          <button
+            className={`profile-tab-btn ${activeTab === 'reservations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reservations')}
+          >
+            Table Reservations
+          </button>
         </div>
 
         {/* Tab content */}
@@ -422,6 +534,9 @@ export default function Profile() {
         )}
         {activeTab === 'history' && (
           <OrderHistory token={token} onReorder={handleReorder} />
+        )}
+        {activeTab === 'reservations' && (
+          <UserReservations token={token} />
         )}
       </div>
 

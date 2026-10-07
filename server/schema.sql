@@ -89,6 +89,33 @@ INSERT INTO `orders` VALUES ('ord-101','grp-101',NULL,'Test Burger','None',12.99
 UNLOCK TABLES;
 
 --
+-- Table structure for table `reservations`
+--
+
+DROP TABLE IF EXISTS `reservations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `reservations` (
+  `id` varchar(60) NOT NULL,
+  `user_id` varchar(50) DEFAULT NULL,
+  `guest_name` varchar(100) NOT NULL,
+  `guest_email` varchar(150) NOT NULL,
+  `reservation_date` date NOT NULL,
+  `time_slot` varchar(10) NOT NULL,
+  `party_size` tinyint unsigned NOT NULL DEFAULT '1',
+  `seating_pref` enum('Indoor','Outdoor','Bar','No Preference') NOT NULL DEFAULT 'No Preference',
+  `special_requests` text,
+  `status` enum('Pending','Confirmed','Seated','Completed','Cancelled') NOT NULL DEFAULT 'Pending',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_res_date_slot` (`reservation_date`,`time_slot`),
+  KEY `idx_res_user` (`user_id`),
+  KEY `idx_res_status` (`status`),
+  CONSTRAINT `fk_res_users` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 

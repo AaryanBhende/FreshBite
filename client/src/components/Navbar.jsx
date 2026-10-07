@@ -134,6 +134,11 @@ export default function Navbar() {
                 Contact
               </NavLink>
             </li>
+            <li>
+              <NavLink to="/reservations" className={({ isActive }) => (isActive ? "active" : "")}>
+                Reservations
+              </NavLink>
+            </li>
 
             {user?.role === "admin" && (
               <li>
