@@ -380,7 +380,11 @@ export default function Menu() {
             </div>
           </div>
           <h2>Browse Dishes</h2>
-          <ProductGrid items={filteredMenu} onSelectDish={addToPicks} />
+          <ProductGrid
+            items={filteredMenu}
+            onSelectDish={addToPicks}
+            onReviewSubmitted={fetchMenuItems}
+          />
         </section>
 
         <aside className="order-sidebar">

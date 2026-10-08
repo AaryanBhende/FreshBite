@@ -14,7 +14,15 @@ const toNum = (v) => {
 
 export const getMenuItems = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM menu_items');
+    const [rows] = await pool.query(`
+      SELECT 
+        m.*,
+        ROUND(COALESCE(AVG(r.rating), 0), 1) AS avg_rating,
+        COUNT(r.id) AS review_count
+      FROM menu_items m
+      LEFT JOIN ratings r ON m.id = r.menu_item_id AND r.is_moderated = 0
+      GROUP BY m.id
+    `);
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -128,7 +136,16 @@ export const deleteMenuItem = async (req, res) => {
 
 export const getFavoriteItems = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM menu_items WHERE is_favorite = 1');
+    const [rows] = await pool.query(`
+      SELECT 
+        m.*,
+        ROUND(COALESCE(AVG(r.rating), 0), 1) AS avg_rating,
+        COUNT(r.id) AS review_count
+      FROM menu_items m
+      LEFT JOIN ratings r ON m.id = r.menu_item_id AND r.is_moderated = 0
+      WHERE m.is_favorite = 1
+      GROUP BY m.id
+    `);
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });

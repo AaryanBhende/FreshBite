@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
 import { AuthContext } from "../context/AuthContext";
 import AdminReservations from "../components/AdminReservations";
+import AdminReviews from "../components/AdminReviews";
 import "../assets/style/menu.css";
 
 const AVAILABLE_TAGS = ["Vegetarian", "Non-Veg", "Vegan", "Gluten-Free"];
@@ -370,6 +371,12 @@ export default function AdminMenu() {
           >
             Reservations
           </button>
+          <button
+            className={`btn-primary ${activeTab === "reviews" ? "" : "btn-secondary"}`}
+            onClick={() => setActiveTab("reviews")}
+          >
+            Reviews &amp; Moderation
+          </button>
         </div>
       </div>
 
@@ -655,6 +662,10 @@ export default function AdminMenu() {
 
       {activeTab === "reservations" && (
         <AdminReservations token={token} />
+      )}
+
+      {activeTab === "reviews" && (
+        <AdminReviews token={token} />
       )}
 
       {/* Floating Notification Bubble Icon */}

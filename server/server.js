@@ -13,6 +13,7 @@ import contactRoutes from './routes/contactRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import reservationRoutes from './routes/reservationRoutes.js';
+import ratingRoutes from './routes/ratingRoutes.js';
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.use(
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/ratings', ratingRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/contact', contactRoutes);

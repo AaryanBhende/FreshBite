@@ -116,6 +116,31 @@ CREATE TABLE `reservations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `ratings`
+--
+
+DROP TABLE IF EXISTS `ratings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ratings` (
+  `id` varchar(60) NOT NULL,
+  `menu_item_id` varchar(50) NOT NULL,
+  `user_id` varchar(50) DEFAULT NULL,
+  `rating` tinyint unsigned NOT NULL,
+  `review_text` text,
+  `tags` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_moderated` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `idx_ratings_item` (`menu_item_id`),
+  KEY `idx_ratings_user` (`user_id`),
+  KEY `idx_ratings_mod` (`is_moderated`),
+  CONSTRAINT `fk_ratings_menu` FOREIGN KEY (`menu_item_id`) REFERENCES `menu_items` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_ratings_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `users`
 --
 

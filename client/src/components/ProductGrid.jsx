@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ProductCard from './ProductCard';
 import '../assets/style/menu.css';
 
-export default function ProductGrid({ items, onSelectDish }) {
+export default function ProductGrid({ items, onSelectDish, onReviewSubmitted }) {
   const [expandedDish, setExpandedDish] = useState(null);
   const closeExpanded = () => setExpandedDish(null);
 
@@ -35,6 +35,7 @@ export default function ProductGrid({ items, onSelectDish }) {
             dish={dish}
             onSelect={onSelectDish}
             onExpand={setExpandedDish}
+            onReviewSubmitted={onReviewSubmitted}
           />
         ))}
       </div>
@@ -46,6 +47,9 @@ export default function ProductGrid({ items, onSelectDish }) {
               dish={expandedDish}
               onSelect={onSelectDish}
               onClose={closeExpanded}
+              onReviewSubmitted={() => {
+                if (onReviewSubmitted) onReviewSubmitted();
+              }}
               expanded
             />
           </div>
