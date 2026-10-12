@@ -543,6 +543,47 @@
   padding-bottom: 0.5rem;
 }
 
+@media (max-width: 900px) {
+  .reservation-container { width: 100%; }
+  .admin-res-toolbar { align-items: stretch; }
+  .admin-res-filters { min-width: 0; }
+  .admin-res-actions { justify-content: space-between; flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .reservation-page { padding: 1.25rem .75rem 3rem; }
+  .reservation-card { padding: 1.25rem; }
+  .admin-res-toolbar { padding: 1rem; }
+  .admin-res-filters { width: 100%; align-items: stretch; }
+  .admin-filter-item { flex-wrap: wrap; }
+  .admin-res-search { flex: 1 1 100%; }
+  .admin-res-search-input { flex: 1 1 auto; }
+  .admin-res-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .admin-view-toggle { width: 100%; }
+  .admin-view-btn { flex: 1 1 0; min-width: 0; padding-inline: .5rem; }
+  .calendar-day-header { align-items: flex-start; flex-direction: column; gap: .75rem; }
+  .reservation-confirmation-details { padding: 1rem; }
+  .reservation-confirmation-actions { flex-direction: column; }
+}
+
+.reservation-confirmation { text-align: center; }
+.reservation-confirmation-icon { margin-bottom: 1rem; font-size: 3rem; }
+.reservation-card h2.reservation-confirmation-title { margin-bottom: .5rem; padding-bottom: 0; border-bottom: 0; }
+.reservation-confirmation-intro { margin: 0 0 1.5rem; color: #555; font-size: 1.05rem; }
+.reservation-confirmation-details {
+  max-width: 30rem;
+  margin: 0 auto 2rem;
+  padding: 1.2rem;
+  border: 1.5px solid #eee;
+  border-radius: 12px;
+  background: #f9f9f9;
+  text-align: left;
+}
+.reservation-confirmation-details p { margin: 0 0 .5rem; }
+.reservation-confirmation-details .reservation-confirmation-status { margin: 0; }
+.reservation-confirmation-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 1rem; }
+.reservation-profile-link { margin-top: 0; }
+.reservation-slots-loading { padding: 1rem 0; color: #777; }
+
 .modal-btn-row {
   display: flex;
   justify-content: flex-end;

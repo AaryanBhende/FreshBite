@@ -1,0 +1,6 @@
+.favorites-page { padding-top: 4.5rem; }
+.marquee-track { animation-duration: 42s; }
+
+@media (max-width: 640px) {
+  .favorites-page { padding-top: 4rem; }
+}

@@ -1,0 +1,15 @@
+.crm-table-wrap { overflow-x: auto; }
+.crm-customer-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  text-align: left;
+}
+.crm-customer-table th,
+.crm-customer-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e2e8e4;
+  vertical-align: top;
+}
+.crm-customer-table th { white-space: nowrap; }
+.crm-customer-table small { color: #64746b; }

@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
-
-const SECONDS_PER_ITEM = 7;
+import '../assets/style/favorites.css';
 
 export default function Favorites() {
   const [favorites, setFavorites] = useState([]);
@@ -21,10 +20,9 @@ export default function Favorites() {
   const repeats = favorites.length ? Math.ceil(6 / favorites.length) : 0;
   const half = Array.from({ length: repeats }).flatMap(() => favorites);
   const track = [...half, ...half];
-  const duration = `${half.length * SECONDS_PER_ITEM}s`;
 
   return (
-    <main style={{ paddingTop: '4.5rem' }}>
+    <main className="favorites-page">
       <section className="Fresh-Favorites" id="menu">
         <header className="section-header">
           <h2>Fresh Favorites</h2>
@@ -33,7 +31,7 @@ export default function Favorites() {
 
         {favorites.length > 0 && (
           <div className="marquee">
-            <div className="marquee-track" style={{ animationDuration: duration }}>
+            <div className="marquee-track">
               {track.map((item, i) => (
                 <Link
                   key={`${item.id}-${i}`}

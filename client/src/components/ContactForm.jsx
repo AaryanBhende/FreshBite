@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
+import { AuthContext } from '../context/AuthContext';
 
 export default function ContactForm() {
+  const { user } = useContext(AuthContext);
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    setFormData((current) => ({
+      ...current,
+      name: current.name || user.name || '',
+      email: current.email || user.email || '',
+    }));
+  }, [user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

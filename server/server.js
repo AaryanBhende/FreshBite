@@ -14,6 +14,8 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import reservationRoutes from './routes/reservationRoutes.js';
 import ratingRoutes from './routes/ratingRoutes.js';
+import promotionRoutes from './routes/promotionRoutes.js';
+import rushRoutes from './routes/rushRoutes.js';
 
 dotenv.config();
 
@@ -46,6 +48,7 @@ app.use(
     maxAge: '1d', // Cache static images for 1 day
   })
 );
+app.use('/uploads', express.static(path.join(__dirname, '../client/public/uploads')));
 
 // 5. API Routes
 app.use('/api/auth', authRoutes);
@@ -54,6 +57,8 @@ app.use('/api/reservations', reservationRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/promotions', promotionRoutes);
+app.use('/api/rush', rushRoutes);
 app.use('/api/contact', contactRoutes);
 
 // Global Error Handler

@@ -6,6 +6,10 @@ import '../assets/style/reservations.css';
 export default function Reservations() {
   const { user, token } = useContext(AuthContext);
 
+  useEffect(() => {
+  window.scrollTo(0, 0);
+  }, []);
+
   // Form state
   const todayStr = new Date().toISOString().split('T')[0];
   const [formData, setFormData] = useState({
@@ -126,44 +130,34 @@ export default function Reservations() {
     <main className="reservation-page">
       <div className="reservation-container">
         <div className="reservation-header">
-          <h1>Reserve Your Table</h1>
+          {/* <h1>Reserve Your Table</h1>
           <p>
             Experience artisan dining at FreshBite. Book your spot in real-time with instant capacity verification.
-          </p>
+          </p> */}
         </div>
 
         {confirmedBooking ? (
-          <div className="reservation-card" style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
-            <h2 style={{ borderBottom: 'none', marginBottom: '0.5rem' }}>Reservation Confirmed!</h2>
-            <p style={{ color: '#555', marginBottom: '1.5rem', fontSize: '1.05rem' }}>
+          <div className="reservation-card reservation-confirmation">
+            <div className="reservation-confirmation-icon">🎉</div>
+            <h2 className="reservation-confirmation-title">Reservation Confirmed!</h2>
+            <p className="reservation-confirmation-intro">
               We look forward to welcoming you, <strong>{confirmedBooking.guest_name}</strong>!
             </p>
 
-            <div
-              style={{
-                maxWidth: 480,
-                margin: '0 auto 2rem',
-                padding: '1.2rem',
-                background: '#f9f9f9',
-                borderRadius: 12,
-                border: '1.5px solid #eee',
-                textAlign: 'left',
-              }}
-            >
-              <p style={{ margin: '0 0 0.5rem' }}>
+            <div className="reservation-confirmation-details">
+              <p>
                 <strong>Confirmation ID:</strong> <code>{confirmedBooking.id}</code>
               </p>
-              <p style={{ margin: '0 0 0.5rem' }}>
+              <p>
                 <strong>Date &amp; Time:</strong> {confirmedBooking.reservation_date} at {confirmedBooking.time_slot}
               </p>
-              <p style={{ margin: '0 0 0.5rem' }}>
+              <p>
                 <strong>Party Size:</strong> {confirmedBooking.party_size} Guests
               </p>
-              <p style={{ margin: '0 0 0.5rem' }}>
+              <p>
                 <strong>Seating Preference:</strong> {confirmedBooking.seating_pref}
               </p>
-              <p style={{ margin: 0 }}>
+              <p className="reservation-confirmation-status">
                 <strong>Status:</strong>{' '}
                 <span className="res-status-badge status-Confirmed">
                   {confirmedBooking.status}
@@ -171,7 +165,7 @@ export default function Reservations() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <div className="reservation-confirmation-actions">
               <button
                 className="btn-primary"
                 onClick={() => {
@@ -182,7 +176,7 @@ export default function Reservations() {
                 Book Another Table
               </button>
               {user && (
-                <Link to="/profile" className="tracker-back-btn" style={{ marginTop: 0 }}>
+                <Link to="/profile" className="tracker-back-btn reservation-profile-link">
                   View in My Profile
                 </Link>
               )}
@@ -295,7 +289,7 @@ export default function Reservations() {
                 </div>
 
                 {loadingSlots ? (
-                  <p style={{ color: '#777', padding: '1rem 0' }}>Checking live slot availability…</p>
+                  <p className="reservation-slots-loading">Checking live slot availability…</p>
                 ) : (
                   <div className="slots-grid">
                     {availability.map((slot) => {

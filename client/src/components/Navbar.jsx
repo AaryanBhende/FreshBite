@@ -191,6 +191,7 @@ export default function Navbar() {
         </nav>
       </header>
 
+
       <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </React.Fragment>
   );

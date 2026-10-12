@@ -5,6 +5,7 @@ import L from 'leaflet';
 import ProductGrid from '../components/ProductGrid';
 import { AuthContext } from '../context/AuthContext';
 import AuthModal from './AuthModal';
+import PromoAnnouncements from '../components/PromoAnnouncements';
 import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -60,7 +61,7 @@ export default function Menu() {
 
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
+  const { user, token } = useContext(AuthContext);
 
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -85,7 +86,14 @@ export default function Menu() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [lastOrderId, setLastOrderId] = useState(null);
+  const [promotionCode, setPromotionCode] = useState('');
+  const [promotion, setPromotion] = useState(null);
+  const [promotionMessage, setPromotionMessage] = useState('');
+  const [rushStatus, setRushStatus] = useState(null);
+  const [recommendations, setRecommendations] = useState(null);
+  const [duplicateDish, setDuplicateDish] = useState('');
   const formRef = useRef(null);
+  const summaryRef = useRef(null);
 
   const [picks, setPicks] = useState([]);
   const [picksOpen, setPicksOpen] = useState(false);
@@ -93,7 +101,15 @@ export default function Menu() {
   const [activePickId, setActivePickId] = useState(null);
   const totalPicks = picks.reduce((sum, p) => sum + p.count, 0);
 
+  const findCartDuplicate = (title, exceptId = null) => cart.find((item) =>
+    item.id !== exceptId && item.title.trim().toLocaleLowerCase() === title.trim().toLocaleLowerCase()
+  );
+
   const addToPicks = (item) => {
+    if (findCartDuplicate(item.title)) {
+      setDuplicateDish(item.title);
+      return;
+    }
     setPicks((prev) => {
       const exists = prev.find((p) => p.id === item.id);
       if (exists) {
@@ -111,6 +127,12 @@ export default function Menu() {
       ];
     });
     setBump((b) => b + 1);
+  };
+
+  const addRecommendedItem = (item) => {
+    const alreadyInOrder = findCartDuplicate(item.title);
+    addToPicks(item);
+    if (!alreadyInOrder) openPicks();
   };
 
   const removePick = (id) => {
@@ -136,6 +158,14 @@ export default function Menu() {
     fetchMenuItems();
     fetchOrders();
   }, []);
+
+  useEffect(() => {
+    if (!user || !token) { setRecommendations(null); return; }
+    fetch('/api/users/recommendations', { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => response.ok ? response.json() : null)
+      .then(setRecommendations)
+      .catch(() => setRecommendations(null));
+  }, [user, token]);
 
   useEffect(() => {
     localStorage.setItem('freshbite_cart', JSON.stringify(cart));
@@ -246,11 +276,59 @@ export default function Menu() {
 
   const totalBill = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
-  const handlePlaceOrderClick = () => {
+  useEffect(() => {
+    setPromotion(null);
+    setPromotionMessage('');
+  }, [totalBill]);
+
+  useEffect(() => {
+    const loadRush = async () => {
+      try {
+        const response = await fetch('/api/rush');
+        if (response.ok) setRushStatus(await response.json());
+      } catch (error) { console.error('Failed to load rush status:', error); }
+    };
+    loadRush();
+    const timer = setInterval(loadRush, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const applyPromotion = async () => {
+    setPromotionMessage('');
+    setPromotion(null);
+    try {
+      const response = await fetch('/api/promotions/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promo_code: promotionCode, cart_total: totalBill, user_id: user?.id || null }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not validate code.');
+      setPromotion(result);
+      setPromotionMessage(`Code applied. You save ₹${result.discount.toFixed(2)}.`);
+    } catch (error) { setPromotionMessage(error.message); }
+  };
+
+  const handlePlaceOrderClick = async () => {
     if (cart.length === 0) return;
     if (!user) {
       setShowAuthModal(true);
       return;
+    }
+    if (promotionCode.trim()) {
+      try {
+        const response = await fetch('/api/promotions/validate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ promo_code: promotionCode, cart_total: totalBill, user_id: user.id }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not validate promotion.');
+        setPromotion(result);
+        setPromotionMessage(`Code applied. You save ₹${result.discount_amount.toFixed(2)}.`);
+      } catch (error) {
+        setPromotion(null);
+        setPromotionMessage(error.message);
+        return;
+      }
     }
     if (orderType === 'Delivery' && !deliveryAddress) {
       setShowLocationModal(true);
@@ -281,17 +359,22 @@ export default function Menu() {
             ? `${deliveryCoordinates.lat},${deliveryCoordinates.lng}`
             : null,
       }));
-      const res = await fetch('api/orders', {
+      const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ items: payload, promo_code: promotion?.code || '' }),
       });
       if (res.ok) {
+        setPromotion(null);
+        setPromotionCode('');
         setCart([]);
         localStorage.removeItem('freshbite_cart');
         setLastOrderId(groupOrderId);
         fetchOrders();
         setShowSuccessModal(true);
+      } else {
+        const result = await res.json();
+        alert(result.error || 'Order could not be placed. Please try again.');
       }
     } catch (err) {
       console.error('Failed to place order:', err);
@@ -306,6 +389,10 @@ export default function Menu() {
     if (!formData.title) return setFormFeedback('Please select or enter a valid dish name.');
     if (itemMeta.price === 0) return setFormFeedback('Please select a valid dish from the menu.');
     if (formData.quantity < 1) return setFormFeedback('Quantity must be at least 1.');
+    if (findCartDuplicate(formData.title, formData.id || null)) {
+      setDuplicateDish(formData.title);
+      return;
+    }
 
     if (formData.id) {
       setCart(
@@ -344,6 +431,21 @@ export default function Menu() {
 
   return (
     <main className="menu-main">
+      {rushStatus && <p className="rush-status" role="status">Restaurant is {rushStatus.level} · estimated wait {rushStatus.wait}</p>}
+      <PromoAnnouncements location="hero_section" />
+      {recommendations?.items?.length > 0 && (
+        <section className="catalog-section recommendations-section">
+          <div className="recommendations-heading">
+            <h2>Recommended Items</h2>
+            <p>{recommendations.basis}</p>
+          </div>
+          <ProductGrid
+            items={recommendations.items}
+            onSelectDish={addRecommendedItem}
+            onReviewSubmitted={fetchMenuItems}
+          />
+        </section>
+      )}
       <section className="menu-layout">
         <section className="catalog-section">
           <div className="catalog-top-bar">
@@ -496,7 +598,7 @@ export default function Menu() {
             </form>
           </div>
 
-          <div className="sidebar-card orders-summary-card">
+          <div className="sidebar-card orders-summary-card" ref={summaryRef}>
             <h2>Your Order Summary</h2>
 
             <div className="form-group order-type-group">
@@ -541,7 +643,7 @@ export default function Menu() {
                 <>
                   <ol className="summary-ol">
                     {cart.map((item) => (
-                      <li key={item.id} className="summary-li">
+                      <li id={`summary-${item.id}`} key={item.id} className="summary-li">
                         <div className="order-item-header">
                           <p className="order-item-title">{item.title}</p>
                           <span className="category-tag">{item.category}</span>
@@ -596,6 +698,16 @@ export default function Menu() {
                     <span>Total Bill:</span>
                     <span>₹{totalBill}</span>
                   </div>
+                  <div className="promotion-checkout">
+                    <label htmlFor="promotionCode">Promotion code</label>
+                    <div className="promotion-input-row">
+                      <input id="promotionCode" value={promotionCode} onChange={(event) => { setPromotionCode(event.target.value); setPromotion(null); }} placeholder="Enter code" />
+                      <button type="button" className="btn-secondary" onClick={applyPromotion} disabled={!promotionCode.trim()}>Apply</button>
+                    </div>
+                    {promotionMessage && <p role="status">{promotionMessage}</p>}
+                    {promotion && <p>Discount: ₹{promotion.discount.toFixed(2)}</p>}
+                  </div>
+                  {promotion && <p className="promotion-total">Total after discount: ₹{promotion.total.toFixed(2)}</p>}
                   <button
                     className="btn-primary place-order-btn"
                     onClick={handlePlaceOrderClick}
@@ -622,6 +734,23 @@ export default function Menu() {
             {totalPicks}
           </span>
         </button>
+      )}
+
+      {duplicateDish && (
+        <div className="modal-backdrop" onClick={() => setDuplicateDish('')}>
+          <div className="modal-content duplicate-dish-modal" role="dialog" aria-modal="true" aria-labelledby="duplicate-dish-title" onClick={(event) => event.stopPropagation()}>
+            <h3 id="duplicate-dish-title">Dish already in your order</h3>
+            <p>This dish is already added to your order. Edit the quantity if needed.</p>
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={() => {
+                const existing = findCartDuplicate(duplicateDish);
+                setDuplicateDish('');
+                (existing && document.getElementById(`summary-${existing.id}`) || summaryRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}>Go to Order Summary</button>
+              <button className="btn-secondary" onClick={() => setDuplicateDish('')}>Close</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
@@ -698,7 +827,7 @@ export default function Menu() {
             <h3>Confirm Order</h3>
             <p>
               Are you sure you want to place this <strong>{orderType}</strong> order amounting to{' '}
-              <strong>₹{totalBill}</strong>?
+              <strong>₹{promotion?.total ?? totalBill}</strong>?
             </p>
             {orderType === 'Delivery' && (
               <p className="confirm-address">

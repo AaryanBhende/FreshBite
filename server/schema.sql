@@ -15,6 +15,61 @@
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
+CREATE TABLE IF NOT EXISTS `promotions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `code` varchar(50) NOT NULL,
+  `description` text,
+  `discount_type` enum('percentage','fixed') NOT NULL,
+  `discount_value` decimal(10,2) NOT NULL,
+  `min_order_amount` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `max_discount_amount` decimal(10,2) DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `usage_limit` int unsigned DEFAULT NULL,
+  `times_used` int unsigned NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `is_deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_promotions_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `app_settings` (
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` varchar(100) NOT NULL,
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`) VALUES ('rush_override', 'automatic');
+
+CREATE TABLE IF NOT EXISTS `order_promotions` (
+  `order_id` varchar(50) NOT NULL,
+  `promotion_id` bigint unsigned DEFAULT NULL,
+  `user_id` varchar(50) DEFAULT NULL,
+  `promotion_code` varchar(50) NOT NULL,
+  `discount_amount` decimal(10,2) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`order_id`),
+  UNIQUE KEY `uq_promo_user_redemption` (`promotion_id`,`user_id`),
+  CONSTRAINT `fk_order_promo_promotion` FOREIGN KEY (`promotion_id`) REFERENCES `promotions` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(150) NOT NULL,
+  `message` text NOT NULL,
+  `linked_promo_id` bigint unsigned DEFAULT NULL,
+  `display_page` enum('menu') NOT NULL DEFAULT 'menu',
+  `display_location` enum('header_banner','checkout_modal','hero_section') NOT NULL,
+  `background_image_url` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `is_advertised` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_announcements_active_location` (`is_active`,`display_location`),
+  CONSTRAINT `fk_announcement_promotion` FOREIGN KEY (`linked_promo_id`) REFERENCES `promotions` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 --
 -- Table structure for table `menu_items`
 --

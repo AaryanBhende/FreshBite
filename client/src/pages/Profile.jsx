@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import '../assets/style/profile.css';
+import '../assets/style/menu.css';
 
 // ─── Helpers ────────────────────────────────────────────────
 function typeBadgeClass(type) {
@@ -55,9 +56,9 @@ function OrderHistory({ token, onReorder }) {
     return (
       <div className="profile-card">
         <h2>Order History</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        <div className="profile-loading-list">
           {[1, 2, 3].map((n) => (
-            <div key={n} className="skeleton" style={{ height: 72, borderRadius: 10 }} />
+            <div key={n} className="skeleton profile-skeleton profile-skeleton--order" />
           ))}
         </div>
       </div>
@@ -68,7 +69,7 @@ function OrderHistory({ token, onReorder }) {
     return (
       <div className="profile-card">
         <h2>Order History</h2>
-        <p style={{ color: '#c62828' }}>{error}</p>
+        <p className="profile-error">{error}</p>
       </div>
     );
   }
@@ -79,7 +80,7 @@ function OrderHistory({ token, onReorder }) {
         <h2>Order History</h2>
         <div className="order-history-empty">
           <p>You haven't placed any orders yet.</p>
-          <Link to="/menu" style={{ color: 'var(--color-primary, #2e7d32)', fontWeight: 600 }}>
+          <Link to="/menu" className="profile-inline-link">
             Browse the Menu →
           </Link>
         </div>
@@ -101,7 +102,7 @@ function OrderHistory({ token, onReorder }) {
                 <span className="order-group-date">{formatDate(group.created_at)}</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="profile-order-badges">
                 <span className={`order-group-type-badge ${typeBadgeClass(group.order_type)}`}>
                   {group.order_type}
                 </span>
@@ -197,9 +198,9 @@ function UserReservations({ token }) {
     return (
       <div className="profile-card">
         <h2>Table Reservations</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        <div className="profile-loading-list">
           {[1, 2].map((n) => (
-            <div key={n} className="skeleton" style={{ height: 60, borderRadius: 10 }} />
+            <div key={n} className="skeleton profile-skeleton profile-skeleton--reservation" />
           ))}
         </div>
       </div>
@@ -210,7 +211,7 @@ function UserReservations({ token }) {
     return (
       <div className="profile-card">
         <h2>Table Reservations</h2>
-        <p style={{ color: '#c62828' }}>{error}</p>
+        <p className="profile-error">{error}</p>
       </div>
     );
   }
@@ -221,7 +222,7 @@ function UserReservations({ token }) {
         <h2>Table Reservations</h2>
         <div className="order-history-empty">
           <p>You have no table reservations yet.</p>
-          <Link to="/reservations" style={{ color: 'var(--color-primary, #2e7d32)', fontWeight: 600 }}>
+          <Link to="/reservations" className="profile-inline-link">
             Reserve a Table Now →
           </Link>
         </div>
@@ -231,9 +232,9 @@ function UserReservations({ token }) {
 
   return (
     <div className="profile-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-        <h2 style={{ margin: 0, padding: 0, border: 'none' }}>Table Reservations</h2>
-        <Link to="/reservations" className="btn-primary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+      <div className="profile-reservation-heading">
+        <h2 className="profile-reservation-title">Table Reservations</h2>
+        <Link to="/reservations" className="profile-book-btn">
           + Book New Table
         </Link>
       </div>
@@ -246,7 +247,7 @@ function UserReservations({ token }) {
                 📅 {r.reservation_date} at 🕒 {r.time_slot}
               </span>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div className="profile-reservation-badges">
               <span className="order-group-type-badge badge-dine">
                 👥 {r.party_size} {r.party_size === 1 ? 'Guest' : 'Guests'}
               </span>
@@ -255,12 +256,12 @@ function UserReservations({ token }) {
               </span>
             </div>
           </div>
-          <div style={{ padding: '0.8rem 1.2rem', fontSize: '0.88rem', color: '#555' }}>
-            <p style={{ margin: '0 0 0.35rem' }}>
+          <div className="profile-reservation-details">
+            <p>
               <strong>Seating:</strong> {r.seating_pref}
             </p>
             {r.special_requests && (
-              <p style={{ margin: 0 }}>
+              <p className="profile-reservation-request">
                 <strong>Requests:</strong> <em>"{r.special_requests}"</em>
               </p>
             )}
@@ -370,8 +371,8 @@ function MyDetails({ user, token, onProfileUpdate }) {
           </div>
 
           {/* Password section */}
-          <h2 style={{ marginTop: '1rem' }}>Change Password</h2>
-          <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '0.8rem' }}>
+          <h2 className="profile-password-heading">Change Password</h2>
+          <p className="profile-password-help">
             Leave all three blank to keep your current password.
           </p>
           <div className="profile-form-row">
@@ -398,7 +399,7 @@ function MyDetails({ user, token, onProfileUpdate }) {
               />
             </div>
           </div>
-          <div className="profile-form-group" style={{ maxWidth: 280 }}>
+          <div className="profile-form-group profile-password-confirm">
             <label htmlFor="pf-conf-pw">Confirm New Password</label>
             <input
               id="pf-conf-pw"
@@ -424,7 +425,7 @@ function MyDetails({ user, token, onProfileUpdate }) {
       <div className="profile-card">
         <h2>Account Information</h2>
         <ul className="profile-meta-list">
-          <li><strong>User ID:</strong> <code style={{ fontSize: '0.8rem' }}>{user?.id}</code></li>
+          <li><strong>User ID:</strong> <code className="profile-user-id">{user?.id}</code></li>
           <li><strong>Role:</strong> {user?.role === 'admin' ? '🛡️ Admin' : '👤 User'}</li>
           <li><strong>Member since:</strong> {joinedDate}</li>
         </ul>

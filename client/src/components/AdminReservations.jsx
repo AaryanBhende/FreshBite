@@ -159,8 +159,7 @@ export default function AdminReservations({ token }) {
             {selectedDate && (
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+                className="btn-secondary admin-filter-clear"
                 onClick={() => setSelectedDate('')}
               >
                 All Dates
@@ -184,30 +183,24 @@ export default function AdminReservations({ token }) {
             </select>
           </div>
 
-          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '0.4rem' }}>
+          <form onSubmit={handleSearchSubmit} className="admin-res-search">
             <input
               type="text"
               placeholder="Search guest or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                padding: '0.45rem 0.8rem',
-                border: '1.5px solid #ddd',
-                borderRadius: 6,
-                fontSize: '0.88rem',
-              }}
+              className="admin-res-search-input"
             />
             <button
               type="submit"
-              className="btn-secondary"
-              style={{ padding: '0.45rem 0.8rem', fontSize: '0.85rem' }}
+              className="btn-secondary admin-res-search-button"
             >
               Search
             </button>
           </form>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div className="admin-res-actions">
           {/* View toggle */}
           <div className="admin-view-toggle">
             <button
@@ -229,8 +222,7 @@ export default function AdminReservations({ token }) {
           {/* Action: Record Walk-in Party */}
           <button
             type="button"
-            className="btn-primary"
-            style={{ padding: '0.5rem 1.1rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
+            className="btn-primary admin-res-walkin-button"
             onClick={() => {
               setWalkinData((prev) => ({
                 ...prev,
@@ -255,39 +247,39 @@ export default function AdminReservations({ token }) {
           <div className="res-stat-label">Total Guests</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#f57f17' }}>
+          <div className="res-stat-number stat-pending">
             {countPending}
           </div>
           <div className="res-stat-label">Pending</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#2e7d32' }}>
+          <div className="res-stat-number stat-confirmed">
             {countConfirmed}
           </div>
           <div className="res-stat-label">Confirmed</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#1565c0' }}>
+          <div className="res-stat-number stat-seated">
             {countSeated}
           </div>
           <div className="res-stat-label">Seated</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#512da8' }}>
+          <div className="res-stat-number stat-completed">
             {countCompleted}
           </div>
           <div className="res-stat-label">Completed</div>
         </div>
       </div>
 
-      {loading && <p style={{ color: '#777', padding: '1rem' }}>Loading reservations…</p>}
-      {error && <p style={{ color: '#c62828', padding: '1rem' }}>{error}</p>}
+      {loading && <p className="admin-res-loading">Loading reservations…</p>}
+      {error && <p className="admin-res-error">{error}</p>}
 
       {/* ── View 1: List / Table View ── */}
       {!loading && viewMode === 'list' && (
         <div className="admin-table-wrapper">
           {reservations.length === 0 ? (
-            <p style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>
+            <p className="admin-res-empty">
               No reservations found matching the selected filters.
             </p>
           ) : (
@@ -309,17 +301,17 @@ export default function AdminReservations({ token }) {
                 {reservations.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <code style={{ fontSize: '0.8rem' }}>{r.id}</code>
+                      <code className="admin-res-id">{r.id}</code>
                     </td>
                     <td>
                       <strong>{r.guest_name}</strong>
                     </td>
                     <td>
-                      <a href={`mailto:${r.guest_email}`} style={{ color: '#1565c0' }}>
+                      <a className="admin-res-email" href={`mailto:${r.guest_email}`}>
                         {r.guest_email}
                       </a>
                     </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{r.reservation_date}</td>
+                    <td className="admin-res-date">{r.reservation_date}</td>
                     <td>
                       <strong>{r.time_slot}</strong>
                     </td>
@@ -327,7 +319,7 @@ export default function AdminReservations({ token }) {
                       <strong>{r.party_size}</strong> {r.party_size === 1 ? 'guest' : 'guests'}
                     </td>
                     <td>{r.seating_pref}</td>
-                    <td style={{ maxWidth: 200, fontSize: '0.85rem', color: '#555' }}>
+                    <td className="admin-res-requests">
                       {r.special_requests || '—'}
                     </td>
                     <td>
@@ -356,20 +348,20 @@ export default function AdminReservations({ token }) {
         <div className="calendar-view-container">
           <div className="calendar-day-header">
             <div>
-              <h3 style={{ margin: 0, color: '#1a1a1a' }}>
+              <h3 className="admin-res-timeline-title">
                 Timeline Schedule for {selectedDate || 'All Dates'}
               </h3>
-              <p style={{ margin: '0.2rem 0 0', color: '#666', fontSize: '0.88rem' }}>
+              <p className="admin-res-timeline-description">
                 Visual view of booked parties organized by 30-minute intervals
               </p>
             </div>
-            <span style={{ fontSize: '0.9rem', color: '#2e7d32', fontWeight: 600 }}>
+            <span className="admin-res-capacity-note">
               Max 40 seats / slot
             </span>
           </div>
 
           {sortedSlots.length === 0 ? (
-            <div className="reservation-card" style={{ textAlign: 'center', color: '#888' }}>
+            <div className="reservation-card admin-res-empty-calendar">
               No reservations scheduled for this date.
             </div>
           ) : (
@@ -404,8 +396,7 @@ export default function AdminReservations({ token }) {
                           <div className="party-card-top">
                             <span className="party-guest-name">{p.guest_name}</span>
                             <select
-                              className={`status-select status-${p.status}`}
-                              style={{ fontSize: '0.75rem', padding: '0.2rem 0.4rem' }}
+                              className={`status-select status-${p.status} admin-res-calendar-status`}
                               value={p.status}
                               onChange={(e) => handleStatusChange(p.id, e.target.value)}
                             >
@@ -421,7 +412,7 @@ export default function AdminReservations({ token }) {
                             <span>• {p.seating_pref}</span>
                           </div>
                           {p.special_requests && (
-                            <div style={{ fontSize: '0.75rem', color: '#777', fontStyle: 'italic' }}>
+                            <div className="admin-res-special-requests">
                               "{p.special_requests}"
                             </div>
                           )}
@@ -441,7 +432,7 @@ export default function AdminReservations({ token }) {
         <div className="modal-backdrop">
           <div className="walkin-modal-content">
             <h3>Record Walk-in Party</h3>
-            <p style={{ color: '#666', fontSize: '0.88rem', marginBottom: '1.2rem' }}>
+            <p className="admin-res-walkin-description">
               Directly assign table capacity to walk-in guests with real-time capacity check.
             </p>
 
@@ -549,7 +540,7 @@ export default function AdminReservations({ token }) {
               </div>
 
               {walkinFeedback.msg && (
-                <div className={`res-feedback ${walkinFeedback.type}`} style={{ marginTop: '1rem' }}>
+                <div className={`res-feedback admin-res-feedback ${walkinFeedback.type}`}>
                   {walkinFeedback.msg}
                 </div>
               )}

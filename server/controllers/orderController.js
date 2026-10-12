@@ -18,7 +18,8 @@ export const getOrders = async (req, res) => {
 
 // CREATE order(s) - Optimized for <200ms response time
 export const createOrder = async (req, res) => {
-  const items = Array.isArray(req.body) ? req.body : [req.body];
+  const items = Array.isArray(req.body) ? req.body : (req.body.items || [req.body]);
+  const promotionCode = Array.isArray(req.body) ? '' : String(req.body.promo_code || req.body.promotion_code || '').trim().toUpperCase();
 
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'Order items array cannot be empty.' });
@@ -55,6 +56,46 @@ export const createOrder = async (req, res) => {
     `;
 
     await connection.query(sql, [values]);
+
+    if (promotionCode) {
+      const subtotal = items.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity || 1), 0);
+      const [promotions] = await connection.query(
+        `SELECT id, discount_type, discount_value, min_order_amount, max_discount_amount, usage_limit, times_used
+         FROM promotions
+         WHERE code = ? AND is_active = 1 AND is_deleted = 0
+           AND (start_date IS NULL OR start_date <= CURRENT_DATE())
+           AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE())
+         FOR UPDATE`,
+        [promotionCode]
+      );
+      const promotion = promotions[0];
+      if (!promotion || subtotal < Number(promotion.min_order_amount) ||
+          (promotion.usage_limit != null && Number(promotion.times_used) >= Number(promotion.usage_limit))) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Promotion is invalid, expired, unavailable, or the minimum order was not met.' });
+      }
+      const userId = items[0].user_id || null;
+      if (userId) {
+        const [uses] = await connection.query(
+          'SELECT 1 FROM order_promotions WHERE promotion_id = ? AND user_id = ? LIMIT 1',
+          [promotion.id, userId]
+        );
+        if (uses.length) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'You have already used this promotion.' });
+        }
+      }
+      const rawDiscount = promotion.discount_type === 'percentage'
+        ? subtotal * Number(promotion.discount_value) / 100
+        : Number(promotion.discount_value);
+      const discount = Math.min(subtotal, rawDiscount,
+        promotion.max_discount_amount == null ? subtotal : Number(promotion.max_discount_amount));
+      await connection.query(
+        'INSERT INTO order_promotions (order_id, promotion_id, user_id, promotion_code, discount_amount) VALUES (?, ?, ?, ?, ?)',
+        [items[0].order_id, promotion.id, userId, promotionCode, discount.toFixed(2)]
+      );
+      await connection.query('UPDATE promotions SET times_used = times_used + 1 WHERE id = ?', [promotion.id]);
+    }
 
     // 5. Commit atomic transaction
     await connection.commit();

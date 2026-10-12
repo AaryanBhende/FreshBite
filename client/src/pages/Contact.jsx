@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import ContactForm from '../components/ContactForm';
+import '../assets/style/contact.css';
 
 import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -29,17 +30,17 @@ export default function Contact() {
   }, []);
 
   return (
-    <main style={{ paddingTop: '4.5rem' }}>
+    <main className="contact-page">
       <section className="Find-Us-Section" id="find-us">
         <div className="find-us-card">
           <ContactForm />
           
-          <figure className="map-container" style={{ position: 'relative', zIndex: 1, overflow: 'hidden' }}>
+          <figure className="map-container contact-map-frame">
             <MapContainer
               center={miramarLocation}
               zoom={15}
               scrollWheelZoom={false}
-              style={{ width: '100%', height: '100%', minHeight: '350px', borderRadius: '8px' }}
+              className="contact-map"
             >
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

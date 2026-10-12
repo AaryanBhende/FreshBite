@@ -2,6 +2,8 @@ import React, { useState, useEffect, useContext, useRef } from "react";
 import { AuthContext } from "../context/AuthContext";
 import AdminReservations from "../components/AdminReservations";
 import AdminReviews from "../components/AdminReviews";
+import AdminPromotions from "../components/AdminPromotions";
+import AdminCRM from "../components/AdminCRM";
 import "../assets/style/menu.css";
 
 const AVAILABLE_TAGS = ["Vegetarian", "Non-Veg", "Vegan", "Gluten-Free"];
@@ -26,6 +28,8 @@ export default function AdminMenu() {
   });
   const [groupedOrders, setGroupedOrders] = useState([]);
   const [expandedOrderIds, setExpandedOrderIds] = useState([]);
+  const [rushOverride, setRushOverride] = useState('automatic');
+  const [rushMessage, setRushMessage] = useState('');
 
   // Ref used to scroll up to the "Edit Menu Item" heading
   const formRef = useRef(null);
@@ -55,6 +59,8 @@ export default function AdminMenu() {
       fetchMenuItems();
     } else if (activeTab === "orders") {
       fetchOrders();
+    } else if (activeTab === "rush") {
+      fetch('/api/rush').then((res) => res.json()).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
     }
   }, [activeTab]);
 
@@ -91,6 +97,20 @@ export default function AdminMenu() {
     } catch (err) {
       console.error("Failed to fetch messages from Mailtrap:", err);
     }
+  };
+
+  const saveRushOverride = async (value) => {
+    setRushOverride(value);
+    setRushMessage('');
+    try {
+      const response = await fetch('/api/rush/override', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rush_override: value }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not save setting.');
+      setRushMessage('Rush status updated.');
+    } catch (error) { setRushMessage(error.message); }
   };
 
   const markAsRead = (msgId) => {
@@ -376,6 +396,15 @@ export default function AdminMenu() {
             onClick={() => setActiveTab("reviews")}
           >
             Reviews &amp; Moderation
+          </button>
+          <button className={`btn-primary ${activeTab === "rush" ? "" : "btn-secondary"}`} onClick={() => setActiveTab("rush")}>
+            Restaurant Rush
+          </button>
+          <button className={`btn-primary ${activeTab === "promotions" ? "" : "btn-secondary"}`} onClick={() => setActiveTab("promotions")}>
+            Promotions
+          </button>
+          <button className={`btn-primary ${activeTab === "crm" ? "" : "btn-secondary"}`} onClick={() => setActiveTab("crm")}>
+            Customer CRM
           </button>
         </div>
       </div>
@@ -667,6 +696,25 @@ export default function AdminMenu() {
       {activeTab === "reviews" && (
         <AdminReviews token={token} />
       )}
+
+      {activeTab === "rush" && (
+        <div className="sidebar-card admin-card">
+          <h2>Restaurant rush status</h2>
+          <p>Choose automatic order-based estimates or set the status manually.</p>
+          <label htmlFor="rushOverride">Rush mode</label>
+          <select className="admin-control-select" id="rushOverride" value={rushOverride} onChange={(event) => saveRushOverride(event.target.value)}>
+            <option value="automatic">Automatic</option>
+            <option value="Quiet">Quiet (10–15 min)</option>
+            <option value="Moderate">Moderate (20–30 min)</option>
+            <option value="Busy/Peak">Busy/Peak (45+ min)</option>
+          </select>
+          {rushMessage && <p role="status">{rushMessage}</p>}
+        </div>
+      )}
+
+      {activeTab === "promotions" && <AdminPromotions token={token} />}
+
+      {activeTab === "crm" && <AdminCRM token={token} />}
 
       {/* Floating Notification Bubble Icon */}
       <div className="admin-mail-fab">

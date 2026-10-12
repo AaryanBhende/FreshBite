@@ -106,32 +106,24 @@ export default function AdminReviews({ token }) {
             </select>
           </div>
 
-          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '0.4rem' }}>
+          <form onSubmit={handleSearchSubmit} className="admin-review-search">
             <input
               type="text"
               placeholder="Search reviewer, dish, or comments..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                padding: '0.45rem 0.8rem',
-                border: '1.5px solid #ddd',
-                borderRadius: 6,
-                fontSize: '0.88rem',
-                width: 250,
-              }}
+              className="admin-review-search-input"
             />
             <button
               type="submit"
-              className="btn-secondary"
-              style={{ padding: '0.45rem 0.8rem', fontSize: '0.85rem' }}
+              className="btn-secondary admin-review-search-button"
             >
               Search
             </button>
             {searchQuery && (
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ padding: '0.45rem 0.6rem', fontSize: '0.85rem' }}
+                className="btn-secondary admin-review-clear-button"
                 onClick={() => {
                   setSearchQuery('');
                   fetchReviews();
@@ -145,9 +137,8 @@ export default function AdminReviews({ token }) {
 
         <button
           type="button"
-          className="btn-secondary"
           onClick={fetchReviews}
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+          className="btn-secondary admin-review-refresh-button"
         >
           🔄 Refresh
         </button>
@@ -160,33 +151,33 @@ export default function AdminReviews({ token }) {
           <div className="res-stat-label">Total Reviews</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#2e7d32' }}>
+          <div className="res-stat-number review-stat-active">
             {activeCount}
           </div>
           <div className="res-stat-label">Active (Live)</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#d32f2f' }}>
+          <div className="res-stat-number review-stat-flagged">
             {flaggedCount}
           </div>
           <div className="res-stat-label">Flagged / Soft-Deleted</div>
         </div>
         <div className="res-stat-card">
-          <div className="res-stat-number" style={{ color: '#f57f17' }}>
+          <div className="res-stat-number review-stat-average">
             ★ {avgStars}
           </div>
           <div className="res-stat-label">Average Score</div>
         </div>
       </div>
 
-      {loading && <p style={{ color: '#777', padding: '1rem' }}>Loading customer reviews…</p>}
-      {error && <p style={{ color: '#c62828', padding: '1rem' }}>{error}</p>}
+      {loading && <p className="admin-review-loading">Loading customer reviews…</p>}
+      {error && <p className="admin-review-error">{error}</p>}
 
       {/* ── Reviews Moderation Table ── */}
       {!loading && (
         <div className="admin-table-wrapper">
           {reviews.length === 0 ? (
-            <p style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>
+            <p className="admin-review-empty">
               No reviews match the selected filter.
             </p>
           ) : (
@@ -213,12 +204,12 @@ export default function AdminReviews({ token }) {
                       className={isFlagged ? 'admin-mod-row--flagged' : undefined}
                     >
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div className="admin-review-dish-cell">
                           {r.menu_item_img && (
                             <img
                               src={`/${r.menu_item_img}`}
                               alt={r.menu_item_title}
-                              style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover' }}
+                              className="admin-review-dish-image"
                             />
                           )}
                           <strong>{r.menu_item_title}</strong>
@@ -228,34 +219,28 @@ export default function AdminReviews({ token }) {
                         <div>
                           <strong>{r.author_name}</strong>
                           {r.author_email && (
-                            <div style={{ fontSize: '0.78rem', color: '#777' }}>
+                            <div className="admin-review-email">
                               {r.author_email}
                             </div>
                           )}
                         </div>
                       </td>
                       <td>
-                        <span style={{ color: '#f57f17', fontWeight: 700, fontSize: '0.95rem' }}>
+                        <span className="admin-review-stars">
                           {'★'.repeat(r.rating)}
                         </span>{' '}
-                        <small style={{ color: '#777' }}>({r.rating}/5)</small>
+                        <small className="admin-review-rating">({r.rating}/5)</small>
                       </td>
-                      <td style={{ maxWidth: 320 }}>
-                        <div style={{ color: '#2c3e50', fontSize: '0.88rem', marginBottom: '0.3rem' }}>
-                          {r.review_text ? `"${r.review_text}"` : <em style={{ color: '#999' }}>No comment</em>}
+                      <td className="admin-review-content-cell">
+                        <div className="admin-review-content">
+                          {r.review_text ? `"${r.review_text}"` : <em className="admin-review-no-comment">No comment</em>}
                         </div>
                         {r.tags && (
-                          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                          <div className="admin-review-tags">
                             {r.tags.split(',').map((t, idx) => (
                               <span
                                 key={idx}
-                                style={{
-                                  fontSize: '0.7rem',
-                                  background: '#e8f5e9',
-                                  color: '#2e7d32',
-                                  padding: '0.1rem 0.4rem',
-                                  borderRadius: 10,
-                                }}
+                                className="admin-review-tag"
                               >
                                 {t.trim()}
                               </span>
@@ -263,7 +248,7 @@ export default function AdminReviews({ token }) {
                           </div>
                         )}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: '#666' }}>
+                      <td className="admin-review-date">
                         {new Date(r.created_at).toLocaleDateString('en-IN', {
                           dateStyle: 'medium',
                         })}

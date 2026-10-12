@@ -45,6 +45,47 @@
   padding-bottom: 0.6rem;
   border-bottom: 2px solid #f0f0f0;
 }
+.profile-loading-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.profile-skeleton { border-radius: 10px; }
+.profile-skeleton--order { height: 72px; }
+.profile-skeleton--reservation { height: 60px; }
+.profile-error { color: #c62828; }
+.profile-inline-link { color: var(--color-primary, #2e7d32); font-weight: 600; }
+.profile-order-badges,
+.profile-reservation-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.profile-order-badges { gap: 0.4rem; }
+.profile-reservation-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+.profile-card h2.profile-reservation-title { margin: 0; padding: 0; border: 0; }
+.profile-reservation-details { padding: 0.8rem 1.2rem; color: #555; font-size: 0.88rem; }
+.profile-reservation-details p { margin: 0 0 0.35rem; }
+.profile-reservation-details .profile-reservation-request { margin: 0; }
+.profile-password-heading { margin-top: 1rem; }
+.profile-password-help { margin-bottom: 0.8rem; color: #888; font-size: 0.82rem; }
+.profile-password-confirm { max-width: 280px; }
+.profile-user-id { font-size: 0.8rem; }
+
+.profile-book-btn {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-primary, #2e7d32);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.2s ease;
+}
+.profile-book-btn:hover,
+.profile-book-btn:focus-visible {
+  background: #1b5e20;
+  color: #fff;
+}
 
 /* ── Form rows ───────────────────────────────────────────── */
 .profile-form-row {
@@ -54,6 +95,8 @@
 }
 @media (max-width: 540px) {
   .profile-form-row { grid-template-columns: 1fr; }
+  .profile-card { padding: 1.25rem; }
+  .profile-reservation-heading { align-items: flex-start; flex-direction: column; }
 }
 
 .profile-form-group {

@@ -13,6 +13,7 @@ export default function ProductCard({
   onClose,
   expanded = false,
   onReviewSubmitted,
+  actionLabel = '+Add to Order',
 }) {
   const { user, token } = useContext(AuthContext);
   const tags = dish.category ? dish.category.split(',').map((tag) => tag.trim()) : ['None'];
@@ -222,8 +223,7 @@ export default function ProductCard({
               <h4>Customer Reviews ({reviews.length})</h4>
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                className="btn-secondary write-review-toggle"
                 onClick={() => setShowWriteReview(!showWriteReview)}
               >
                 {showWriteReview ? 'Close Review Form' : '★ Write a Review'}
@@ -247,7 +247,7 @@ export default function ProductCard({
                       ★
                     </button>
                   ))}
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f57f17', marginLeft: 6 }}>
+                  <span className="star-rating-caption">
                     {newRating} / 5 Stars
                   </span>
                 </div>
@@ -271,7 +271,7 @@ export default function ProductCard({
                   ))}
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <div className="review-form-actions">
                   <button
                     type="button"
                     className="btn-secondary"
@@ -287,15 +287,15 @@ export default function ProductCard({
             )}
 
             {reviewMsg.msg && (
-              <div className={`res-feedback ${reviewMsg.type}`} style={{ margin: '0.75rem 0' }}>
+              <div className={`res-feedback review-feedback ${reviewMsg.type}`}>
                 {reviewMsg.msg}
               </div>
             )}
 
             {loadingReviews ? (
-              <p style={{ color: '#777', fontSize: '0.85rem' }}>Loading reviews…</p>
+              <p className="review-loading">Loading reviews…</p>
             ) : reviews.length === 0 ? (
-              <p style={{ color: '#888', fontSize: '0.88rem', margin: '0.5rem 0' }}>
+              <p className="review-empty">
                 No reviews yet. Be the first to share your thoughts!
               </p>
             ) : (
@@ -329,7 +329,7 @@ export default function ProductCard({
         {onSelect && (
           <div className="card-footer">
             <button className="btn-primary" type="button" onClick={handleAdd}>
-              +Add to Order
+              {actionLabel}
             </button>
           </div>
         )}
