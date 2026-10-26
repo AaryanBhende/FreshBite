@@ -1,24 +1,33 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
+import ReservationFloorMap from '../components/ReservationFloorMap';
+import AuthModal from './AuthModal';
+import { formatReservationSlot, getLocalReservationDate, isReservationSlotInPast } from '../utils/reservationSlots';
 import '../assets/style/reservations.css';
 
 export default function Reservations() {
   const { user, token } = useContext(AuthContext);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   useEffect(() => {
   window.scrollTo(0, 0);
   }, []);
 
   // Form state
-  const todayStr = new Date().toISOString().split('T')[0];
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const todayStr = getLocalReservationDate(currentTime);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
   const [formData, setFormData] = useState({
     guest_name: user?.name || '',
     guest_email: user?.email || '',
     reservation_date: todayStr,
     time_slot: '',
-    party_size: 2,
-    seating_pref: 'No Preference',
+    party_size: '',
     special_requests: '',
   });
 
@@ -39,11 +48,51 @@ export default function Reservations() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState({ msg: '', type: '' });
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+  const [tableAvailability, setTableAvailability] = useState([]);
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [loadingTables, setLoadingTables] = useState(false);
+  const futureSlots = availability.filter((slot) => !isReservationSlotInPast(formData.reservation_date, slot.time_slot, currentTime));
+
+  useEffect(() => {
+    if (isReservationSlotInPast(formData.reservation_date, formData.time_slot, currentTime)) {
+      setFormData((current) => ({ ...current, time_slot: '' }));
+      setSelectedTable(null);
+    }
+  }, [formData.reservation_date, formData.time_slot, currentTime]);
 
   // Fetch slot availability whenever reservation_date changes
   useEffect(() => {
     fetchAvailability(formData.reservation_date);
   }, [formData.reservation_date]);
+
+  useEffect(() => {
+    setSelectedTable(null);
+    setTableAvailability([]);
+    if (!formData.reservation_date || !formData.time_slot) return;
+    let cancelled = false;
+    setLoadingTables(true);
+    let firstLoad = true;
+    const refreshTables = async () => {
+      try {
+        const res = await fetch(`/api/tables/availability?date=${encodeURIComponent(formData.reservation_date)}&time_slot=${encodeURIComponent(formData.time_slot)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to load table availability.');
+        if (!cancelled) {
+          const nextTables = data.tables || [];
+          setTableAvailability(nextTables);
+          setSelectedTable((current) => current && !nextTables.some((table) => table.id === current.id && table.table_status === 'Free') ? null : current);
+        }
+      } catch (error) {
+        if (!cancelled) setFeedback({ msg: error.message, type: 'error' });
+      } finally {
+        if (!cancelled && firstLoad) setLoadingTables(false);
+        firstLoad = false;
+      }
+    };
+    refreshTables();
+    const refreshTimer = setInterval(refreshTables, 15000);
+    return () => { cancelled = true; clearInterval(refreshTimer); };
+  }, [formData.reservation_date, formData.time_slot]);
 
   const fetchAvailability = async (date) => {
     if (!date) return;
@@ -63,10 +112,7 @@ export default function Reservations() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === 'party_size' ? parseInt(value, 10) || 1 : value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     // If date changed, reset time_slot selection
     if (name === 'reservation_date') {
       setFormData((prev) => ({ ...prev, time_slot: '' }));
@@ -82,31 +128,56 @@ export default function Reservations() {
     e.preventDefault();
     setFeedback({ msg: '', type: '' });
 
+    if (!token) {
+      setFeedback({ msg: 'Please log in or create an account to reserve a table.', type: 'error' });
+      setIsAuthModalOpen(true);
+      return;
+    }
+
     if (!formData.time_slot) {
-      setFeedback({ msg: 'Please select an available 30-minute time slot.', type: 'error' });
+      setFeedback({ msg: 'Please select an available one-hour time slot.', type: 'error' });
+      return;
+    }
+    if (!selectedTable) {
+      setFeedback({ msg: 'Please choose an available table from the floor map.', type: 'error' });
+      return;
+    }
+    if (!formData.party_size || Number(formData.party_size) < 1 || Number(formData.party_size) > Number(selectedTable.capacity)) {
+      setFeedback({ msg: `Choose between 1 and ${selectedTable.capacity} guests for this table.`, type: 'error' });
       return;
     }
 
     setSubmitting(true);
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
 
       const res = await fetch('/api/reservations', {
         method: 'POST',
         headers,
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, table_id: selectedTable.id }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         setFeedback({ msg: data.error || 'Failed to complete reservation.', type: 'error' });
-        // Refresh availability in case capacity changed
         fetchAvailability(formData.reservation_date);
+        const query = new URLSearchParams({ date: formData.reservation_date, time_slot: formData.time_slot });
+        fetch(`/api/tables/availability?${query}`)
+          .then(async (tableRes) => {
+            const tableData = await tableRes.json();
+            if (tableRes.ok) setTableAvailability(tableData.tables || []);
+          })
+          .catch(() => {});
+        setSelectedTable(null);
       } else {
-        setConfirmedBooking(data.reservation);
+        setConfirmedBooking({
+          ...data.reservation,
+          table_number: selectedTable.table_number,
+          table_zone: selectedTable.zone,
+        });
         setFeedback({
           msg: `Table reserved successfully! Confirmation ID: ${data.reservation.id}`,
           type: 'success',
@@ -120,11 +191,6 @@ export default function Reservations() {
       setSubmitting(false);
     }
   };
-
-  // Check if selected slot has enough seats for the requested party_size
-  const selectedSlotObj = availability.find((s) => s.time_slot === formData.time_slot);
-  const exceedsCapacity =
-    selectedSlotObj && formData.party_size > selectedSlotObj.available;
 
   return (
     <main className="reservation-page">
@@ -149,14 +215,14 @@ export default function Reservations() {
                 <strong>Confirmation ID:</strong> <code>{confirmedBooking.id}</code>
               </p>
               <p>
-                <strong>Date &amp; Time:</strong> {confirmedBooking.reservation_date} at {confirmedBooking.time_slot}
+                <strong>Date &amp; Time:</strong> {confirmedBooking.reservation_date} · {formatReservationSlot(confirmedBooking.time_slot)}
               </p>
               <p>
                 <strong>Party Size:</strong> {confirmedBooking.party_size} Guests
               </p>
-              <p>
-                <strong>Seating Preference:</strong> {confirmedBooking.seating_pref}
-              </p>
+              {confirmedBooking.table_number && (
+                <p><strong>Table:</strong> {confirmedBooking.table_zone === 'Bar' ? 'Bar-' : ''}{confirmedBooking.table_number} · {confirmedBooking.table_zone}</p>
+              )}
               <p className="reservation-confirmation-status">
                 <strong>Status:</strong>{' '}
                 <span className="res-status-badge status-Confirmed">
@@ -167,10 +233,11 @@ export default function Reservations() {
 
             <div className="reservation-confirmation-actions">
               <button
-                className="btn-primary"
+                className="res-book-another-btn"
                 onClick={() => {
                   setConfirmedBooking(null);
-                  setFormData((prev) => ({ ...prev, time_slot: '', special_requests: '' }));
+                  setFormData((prev) => ({ ...prev, time_slot: '', party_size: '', special_requests: '' }));
+                  setSelectedTable(null);
                 }}
               >
                 Book Another Table
@@ -184,7 +251,7 @@ export default function Reservations() {
           </div>
         ) : (
           <div className="reservation-card">
-            <h2>Guest &amp; Party Details</h2>
+          <h2>Guest Details</h2>
 
             <form onSubmit={handleSubmit} noValidate>
               <div className="res-form-grid">
@@ -228,35 +295,6 @@ export default function Reservations() {
                 </div>
 
                 <div className="res-form-group">
-                  <label htmlFor="party_size">Number of Guests (1–20) *</label>
-                  <input
-                    id="party_size"
-                    name="party_size"
-                    type="number"
-                    min="1"
-                    max="20"
-                    required
-                    value={formData.party_size}
-                    onChange={handleInputChange}
-                  />
-                </div>
-
-                <div className="res-form-group">
-                  <label htmlFor="seating_pref">Seating Area Preference</label>
-                  <select
-                    id="seating_pref"
-                    name="seating_pref"
-                    value={formData.seating_pref}
-                    onChange={handleInputChange}
-                  >
-                    <option value="No Preference">No Preference</option>
-                    <option value="Indoor">Indoor (Air-Conditioned)</option>
-                    <option value="Outdoor">Outdoor Garden Patio</option>
-                    <option value="Bar">Bar Counter</option>
-                  </select>
-                </div>
-
-                <div className="res-form-group">
                   <label htmlFor="special_requests">Special Requests / Occasion</label>
                   <input
                     id="special_requests"
@@ -273,14 +311,14 @@ export default function Reservations() {
               <div className="slots-section">
                 <div className="slots-header">
                   <h3>
-                    Select 30-Minute Time Slot for {formData.reservation_date}
+                    Select an Hour for {formData.reservation_date}
                   </h3>
                   <div className="slots-legend">
                     <span className="legend-item">
                       <span className="legend-dot available" /> Available
                     </span>
                     <span className="legend-item">
-                      <span className="legend-dot filling" /> Limited Seats
+                      <span className="legend-dot filling" /> Few Tables Left
                     </span>
                     <span className="legend-item">
                       <span className="legend-dot full" /> Full / Unavailable
@@ -292,11 +330,10 @@ export default function Reservations() {
                   <p className="reservation-slots-loading">Checking live slot availability…</p>
                 ) : (
                   <div className="slots-grid">
-                    {availability.map((slot) => {
+                    {futureSlots.length ? futureSlots.map((slot) => {
                       const isSelected = formData.time_slot === slot.time_slot;
-                      const hasRoom = slot.available >= formData.party_size;
-                      const isLow = slot.available > 0 && slot.available <= 6;
-                      const isFull = slot.available === 0 || !hasRoom;
+                      const isLow = slot.available > 0 && slot.available <= 3;
+                      const isFull = slot.available === 0;
 
                       return (
                         <button
@@ -307,26 +344,52 @@ export default function Reservations() {
                           }`}
                           disabled={isFull}
                           onClick={() => handleSlotSelect(slot)}
-                          title={`${slot.time_slot}: ${slot.available} seats left of ${slot.capacity}`}
+                          title={`${formatReservationSlot(slot.time_slot)}: ${slot.available} tables left of ${slot.total_tables}`}
                         >
-                          <span className="slot-time">{slot.time_slot}</span>
+                          <span className="slot-time">{formatReservationSlot(slot.time_slot)}</span>
                           <span className={`slot-seats ${isLow ? 'low-seats' : ''}`}>
                             {slot.available === 0
                               ? 'Full'
-                              : `${slot.available} seat${slot.available === 1 ? '' : 's'}`}
+                              : `${slot.available} table${slot.available === 1 ? '' : 's'}`}
                           </span>
                         </button>
                       );
-                    })}
+                    }) : <p>No future time slots are available for this date.</p>}
                   </div>
                 )}
               </div>
 
-              {exceedsCapacity && (
-                <div className="capacity-warning">
-                  ⚠️ The selected time slot ({formData.time_slot}) has only {selectedSlotObj.available} seats
-                  available, which is less than your party of {formData.party_size}. Please select another slot.
-                </div>
+              {formData.time_slot && (
+                <section className="slots-section" aria-live="polite">
+                  <div className="slots-header">
+                    <h3>Choose your table</h3>
+                    {selectedTable && <span>Up to {selectedTable.capacity} guests</span>}
+                  </div>
+                  {loadingTables ? <p className="reservation-slots-loading">Loading table availability…</p> : (
+                    <ReservationFloorMap
+                      tables={tableAvailability}
+                      selectedId={selectedTable?.id}
+                      onSelect={(table) => {
+                        setSelectedTable(table);
+                        setFormData((prev) => ({ ...prev, party_size: 1 }));
+                      }}
+                    />
+                  )}
+                  {selectedTable && (
+                    <div className="res-form-group selected-table-guests">
+                      <label htmlFor="selected-table-party">Guests at {selectedTable.zone === 'Bar' ? 'Bar-' : ''}{selectedTable.table_number} (maximum {selectedTable.capacity})</label>
+                      <input
+                        id="selected-table-party"
+                        type="number"
+                        min="1"
+                        max={selectedTable.capacity}
+                        required
+                        value={formData.party_size}
+                        onChange={(event) => setFormData((prev) => ({ ...prev, party_size: event.target.value === '' ? '' : Math.min(Number(event.target.value), selectedTable.capacity) }))}
+                      />
+                    </div>
+                  )}
+                </section>
               )}
 
               {feedback.msg && (
@@ -336,7 +399,7 @@ export default function Reservations() {
               <button
                 type="submit"
                 className="res-submit-btn"
-                disabled={submitting || !formData.time_slot || exceedsCapacity}
+                disabled={submitting || !formData.time_slot || !selectedTable || loadingTables || !formData.party_size || formData.party_size < 1 || formData.party_size > (selectedTable?.capacity || 0)}
               >
                 {submitting
                   ? 'Confirming Table…'
@@ -348,6 +411,7 @@ export default function Reservations() {
           </div>
         )}
       </div>
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </main>
   );
 }

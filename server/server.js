@@ -16,6 +16,8 @@ import reservationRoutes from './routes/reservationRoutes.js';
 import ratingRoutes from './routes/ratingRoutes.js';
 import promotionRoutes from './routes/promotionRoutes.js';
 import rushRoutes from './routes/rushRoutes.js';
+import tableRoutes from './routes/tableRoutes.js';
+import kdsRoutes from './routes/kdsRoutes.js';
 
 dotenv.config();
 
@@ -54,9 +56,11 @@ app.use('/uploads', express.static(path.join(__dirname, '../client/public/upload
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/tables', tableRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/kds', kdsRoutes);
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/rush', rushRoutes);
 app.use('/api/contact', contactRoutes);

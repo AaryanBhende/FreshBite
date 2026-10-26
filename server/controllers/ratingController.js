@@ -2,10 +2,13 @@ import pool from '../config/db.js';
 
 /**
  * GET /api/ratings/item/:itemId
- * Fetch unmoderated reviews for a specific menu item, along with reviewer's name.
+ * Fetch a page of unmoderated reviews for a specific menu item, along with summary metadata.
  */
 export const getItemReviews = async (req, res) => {
   const { itemId } = req.params;
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 5));
+  const offset = (page - 1) * limit;
 
   try {
     const [rows] = await pool.query(
@@ -21,8 +24,9 @@ export const getItemReviews = async (req, res) => {
        FROM ratings r
        LEFT JOIN users u ON r.user_id = u.id
        WHERE r.menu_item_id = ? AND r.is_moderated = 0
-       ORDER BY r.created_at DESC`,
-      [itemId]
+       ORDER BY r.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [itemId, limit, offset]
     );
 
     // Compute item summary
@@ -39,6 +43,13 @@ export const getItemReviews = async (req, res) => {
       reviews: rows,
       avg_rating: Number(summaryRows[0]?.avg_rating || 0),
       review_count: Number(summaryRows[0]?.review_count || 0),
+      pagination: {
+        page,
+        limit,
+        total: Number(summaryRows[0]?.review_count || 0),
+        totalPages: Math.ceil(Number(summaryRows[0]?.review_count || 0) / limit),
+        hasMore: offset + rows.length < Number(summaryRows[0]?.review_count || 0),
+      },
     });
   } catch (error) {
     console.error('getItemReviews error:', error);
@@ -103,13 +114,38 @@ export const createItemReview = async (req, res) => {
 /**
  * GET /api/ratings/admin
  * Admin route: Get all ratings/reviews across items with menu item title, user details, and moderation status.
- * Supports filters: ?status=all|active|flagged & ?search=text
+ * Supports pagination: ?page=1&limit=10 and filters: ?status=all|active|flagged & ?search=text
  */
 export const getAdminReviews = async (req, res) => {
   const { status = 'all', search } = req.query;
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
+  const offset = (page - 1) * limit;
 
   try {
-    let sql = `
+    let where = ' WHERE 1=1';
+    const filterParams = [];
+
+    if (status === 'flagged') {
+      where += ' AND r.is_moderated = 1';
+    } else if (status === 'active') {
+      where += ' AND r.is_moderated = 0';
+    }
+
+    if (search && search.trim()) {
+      where += ' AND (r.review_text LIKE ? OR m.title LIKE ? OR u.name LIKE ? OR r.tags LIKE ?)';
+      const term = `%${search.trim()}%`;
+      filterParams.push(term, term, term, term);
+    }
+
+    const [countRows] = await pool.query(`
+      SELECT COUNT(*) AS total
+      FROM ratings r
+      LEFT JOIN menu_items m ON r.menu_item_id = m.id
+      LEFT JOIN users u ON r.user_id = u.id${where}
+    `, filterParams);
+
+    const sql = `
       SELECT 
         r.id,
         r.menu_item_id,
@@ -126,26 +162,17 @@ export const getAdminReviews = async (req, res) => {
       FROM ratings r
       LEFT JOIN menu_items m ON r.menu_item_id = m.id
       LEFT JOIN users u ON r.user_id = u.id
-      WHERE 1=1
+      ${where}
+      ORDER BY r.created_at DESC
+      LIMIT ? OFFSET ?
     `;
-    const params = [];
 
-    if (status === 'flagged') {
-      sql += ' AND r.is_moderated = 1';
-    } else if (status === 'active') {
-      sql += ' AND r.is_moderated = 0';
-    }
-
-    if (search && search.trim()) {
-      sql += ' AND (r.review_text LIKE ? OR m.title LIKE ? OR u.name LIKE ? OR r.tags LIKE ?)';
-      const term = `%${search.trim()}%`;
-      params.push(term, term, term, term);
-    }
-
-    sql += ' ORDER BY r.created_at DESC';
-
-    const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    const [rows] = await pool.query(sql, [...filterParams, limit, offset]);
+    const total = Number(countRows[0]?.total || 0);
+    res.json({
+      reviews: rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: offset + rows.length < total },
+    });
   } catch (error) {
     console.error('getAdminReviews error:', error);
     res.status(500).json({ error: error.message });

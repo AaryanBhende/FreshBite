@@ -3,6 +3,7 @@ import {
   getAvailability,
   createReservation,
   getUserReservations,
+  cancelUserReservation,
   getAdminReservations,
   updateReservationStatus,
   createWalkInReservation,
@@ -19,6 +20,7 @@ router.post('/', optionalAuth, createReservation);
 
 // 3. Authenticated customer reservation history
 router.get('/user', verifyToken, getUserReservations);
+router.put('/:id/cancel', verifyToken, cancelUserReservation);
 
 // 4. Admin Management Endpoints
 router.get('/admin', verifyAdmin, getAdminReservations);

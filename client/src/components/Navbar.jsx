@@ -8,7 +8,11 @@ export default function Navbar() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [kitchenOrderCount, setKitchenOrderCount] = useState(0);
   const location = useLocation();
+  const isAdmin = user?.role === "admin";
+  const isDriver = user?.role === "driver";
+  const isKitchen = user?.role === "kitchen";
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -50,6 +54,19 @@ export default function Navbar() {
     };
   }, [user, token]);
 
+  useEffect(() => {
+    if (!isKitchen || !token) return;
+    const loadKitchenCount = async () => {
+      try {
+        const response = await fetch('/api/kds/orders', { headers: { Authorization: `Bearer ${token}` } });
+        if (response.ok) setKitchenOrderCount((await response.json()).orders?.length || 0);
+      } catch { /* The dashboard displays its own connection state. */ }
+    };
+    loadKitchenCount();
+    const interval = setInterval(loadKitchenCount, 5000);
+    return () => clearInterval(interval);
+  }, [isKitchen, token]);
+
   const fetchUnreadCount = async () => {
     try {
       const res = await fetch("/api/contact/mailtrap", {
@@ -75,9 +92,9 @@ export default function Navbar() {
 
   return (
     <React.Fragment>
-      <header className="navbar">
+      <header className={`navbar${isDriver || isKitchen ? " navbar-driver" : ""}`}>
         <h2 className="navbar-title">
-          <Link to="/" className="navbar-brand">
+          <Link to={isAdmin ? "/admin" : isDriver ? "/driver" : isKitchen ? "/kitchen" : "/"} className="navbar-brand">
             <img
               className="navbar-logo"
               src="/assets/images/logo.jpg"
@@ -114,57 +131,51 @@ export default function Navbar() {
 
         <nav id="main-nav" className={menuOpen ? "open" : ""}>
           <ul className="navbar-links">
-            <li>
+            {isKitchen && <li className="driver-portal-badge"><NavLink to="/kitchen" end className={({ isActive }) => isActive ? 'active' : ''}>Kitchen · {kitchenOrderCount} active</NavLink></li>}
+            {isKitchen && <li><NavLink to="/kitchen/history" className={({ isActive }) => isActive ? 'active' : ''}>History</NavLink></li>}
+            {!isAdmin && !isDriver && !isKitchen && <li>
               <NavLink to="/" className={({ isActive }) => (isActive ? "active" : "")}>
                 Home
               </NavLink>
-            </li>
-            <li>
+            </li>}
+            {!isAdmin && !isDriver && !isKitchen && <li>
               <NavLink to="/about" className={({ isActive }) => (isActive ? "active" : "")}>
                 About
               </NavLink>
-            </li>
-            <li>
+            </li>}
+            {!isAdmin && !isDriver && !isKitchen && <li>
               <NavLink to="/menu" className={({ isActive }) => (isActive ? "active" : "")}>
                 Menu
               </NavLink>
-            </li>
-            <li>
+            </li>}
+            {!isAdmin && !isDriver && !isKitchen && <li>
               <NavLink to="/contact" className={({ isActive }) => (isActive ? "active" : "")}>
                 Contact
               </NavLink>
-            </li>
-            <li>
+            </li>}
+            {!isAdmin && !isDriver && !isKitchen && <li>
               <NavLink to="/reservations" className={({ isActive }) => (isActive ? "active" : "")}>
                 Reservations
               </NavLink>
-            </li>
+            </li>}
 
-            {user?.role === "admin" && (
-              <li>
-                <NavLink
-                  to="/admin"
-                  className={({ isActive }) =>
-                    `navbar-admin-link${isActive ? " active" : ""}`
-                  }
-                >
-                  Admin Panel
-                  {unreadCount > 0 && <span className="navbar-badge">{unreadCount}</span>}
-                </NavLink>
-              </li>
-            )}
+            {isAdmin && <>
+              <li><NavLink to="/admin" end className={({ isActive }) => isActive ? "active" : ""}>📋 Dashboard</NavLink></li>
+              <li><NavLink to="/admin/operations" className={({ isActive }) => isActive ? "active" : ""}>⚡ Operations</NavLink></li>
+              <li><NavLink to="/admin/marketing" className={({ isActive }) => isActive ? "active" : ""}>📢 Marketing</NavLink></li>
+              <li><NavLink to="/admin/management" className={({ isActive }) => isActive ? "active" : ""}>🛠️ Management</NavLink></li>
+            </>}
 
-            <li className="navbar-auth-item">
+            {isDriver && <li className="driver-portal-badge"><NavLink to="/driver" end className={({ isActive }) => isActive ? "active" : ""}>Assigned Deliveries</NavLink></li>}
+
+            <li className={`navbar-auth-item${isAdmin || isDriver ? " navbar-admin-auth-item" : ""}`}>
               {user ? (
                 <div className="navbar-user-info">
-                  <NavLink
-                    to="/profile"
-                    className="navbar-username"
-                    onClick={closeMenu}
-                    title="My Profile"
-                  >
-                    <strong>{user.name}</strong>
-                  </NavLink>
+                  {isAdmin || isDriver || isKitchen ? <strong className="navbar-username">{user.name}</strong> : (
+                    <NavLink to="/profile" className="navbar-username" onClick={closeMenu} title="My Profile">
+                      <strong>{user.name}</strong>
+                    </NavLink>
+                  )}
                   <button
                     className="navbar-logout-btn"
                     onClick={() => {

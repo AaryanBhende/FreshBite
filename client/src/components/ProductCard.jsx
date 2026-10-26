@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import '../assets/style/menu.css';
 
@@ -17,17 +17,27 @@ export default function ProductCard({
 }) {
   const { user, token } = useContext(AuthContext);
   const tags = dish.category ? dish.category.split(',').map((tag) => tag.trim()) : ['None'];
-  const canExpand = !expanded && onExpand;
+  const isUnavailable = dish.is_available === 0 || dish.is_available === false;
+  const canExpand = !isUnavailable && !expanded && onExpand;
 
   // Review states (for expanded view)
   const [reviews, setReviews] = useState([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+  const [hasMoreReviews, setHasMoreReviews] = useState(false);
+  const [reviewPage, setReviewPage] = useState(1);
+  const [reviewCount, setReviewCount] = useState(0);
   const [showWriteReview, setShowWriteReview] = useState(false);
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewMsg, setReviewMsg] = useState({ msg: '', type: '' });
+  const reviewListRef = useRef(null);
+  const reviewEndRef = useRef(null);
+  const reviewRequestInFlight = useRef(false);
+  const reviewRequestController = useRef(null);
+  const reviewRequestSequence = useRef(0);
 
   const nutrition = [
     { label: 'Calories', value: dish.calories, unit: 'kcal' },
@@ -38,6 +48,7 @@ export default function ProductCard({
   ].filter((n) => hasValue(n.value));
 
   const handleAdd = () => {
+    if (isUnavailable) return;
     onSelect(dish);
     if (expanded && onClose) onClose();
   };
@@ -45,24 +56,61 @@ export default function ProductCard({
   // Fetch reviews when expanded
   useEffect(() => {
     if (expanded && dish?.id) {
-      fetchReviews();
+      fetchReviews({ page: 1, append: false });
     }
   }, [expanded, dish?.id]);
 
-  const fetchReviews = async () => {
-    setLoadingReviews(true);
+  const fetchReviews = async ({ page = 1, append = false } = {}) => {
+    if (!dish?.id || (append && reviewRequestInFlight.current)) return;
+    if (!append) reviewRequestController.current?.abort();
+    const controller = new AbortController();
+    reviewRequestController.current = controller;
+    const requestId = ++reviewRequestSequence.current;
+    reviewRequestInFlight.current = true;
+    if (append) setLoadingMoreReviews(true);
+    else {
+      setLoadingReviews(true);
+      setReviews([]);
+      setReviewCount(0);
+      setHasMoreReviews(false);
+      setReviewPage(1);
+    }
     try {
-      const res = await fetch(`/api/ratings/item/${dish.id}`);
+      const res = await fetch(`/api/ratings/item/${dish.id}?page=${page}&limit=5`, { signal: controller.signal });
       if (res.ok) {
         const data = await res.json();
-        setReviews(data.reviews || []);
+        if (requestId !== reviewRequestSequence.current) return;
+        const pageReviews = data.reviews || [];
+        setReviews((current) => {
+          if (!append) return pageReviews;
+          const existingIds = new Set(current.map((review) => review.id));
+          return [...current, ...pageReviews.filter((review) => !existingIds.has(review.id))];
+        });
+        const pagination = data.pagination || {};
+        setReviewCount(Number(data.review_count ?? pagination.total ?? pageReviews.length));
+        setHasMoreReviews(Boolean(pagination.hasMore));
+        setReviewPage(page);
       }
     } catch (err) {
-      console.error('Failed to fetch reviews:', err);
+      if (err.name !== 'AbortError') console.error('Failed to fetch reviews:', err);
     } finally {
-      setLoadingReviews(false);
+      if (requestId === reviewRequestSequence.current) {
+        reviewRequestInFlight.current = false;
+        reviewRequestController.current = null;
+        setLoadingReviews(false);
+        setLoadingMoreReviews(false);
+      }
     }
   };
+
+  useEffect(() => {
+    if (!expanded || !hasMoreReviews || loadingReviews || loadingMoreReviews || !reviewListRef.current || !reviewEndRef.current) return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) fetchReviews({ page: reviewPage + 1, append: true });
+    }, { root: reviewListRef.current, rootMargin: '50px' });
+    observer.observe(reviewEndRef.current);
+    return () => observer.disconnect();
+  }, [expanded, hasMoreReviews, loadingReviews, loadingMoreReviews, reviewPage, reviews.length, dish?.id]);
 
   const handleTagToggle = (tag) => {
     if (selectedTags.includes(tag)) {
@@ -101,7 +149,7 @@ export default function ProductCard({
         setNewComment('');
         setSelectedTags([]);
         setShowWriteReview(false);
-        fetchReviews();
+        fetchReviews({ page: 1, append: false });
         if (onReviewSubmitted) onReviewSubmitted();
       }
     } catch (err) {
@@ -118,8 +166,9 @@ export default function ProductCard({
   return (
     <article
       id={!expanded ? `dish-${dish.id}` : undefined}
-      className={`catalog-card ${expanded ? 'expanded' : ''}`}
+      className={`catalog-card ${expanded ? 'expanded' : ''}${isUnavailable ? ' catalog-card--unavailable' : ''}`}
     >
+      {isUnavailable && <span className="catalog-unavailable-stamp" aria-label="Unavailable">Unavailable</span>}
       {expanded && (
         <button
           className="card-close-btn"
@@ -220,7 +269,7 @@ export default function ProductCard({
         {expanded && (
           <div className="dish-reviews-section">
             <div className="dish-reviews-header">
-              <h4>Customer Reviews ({reviews.length})</h4>
+              <h4>Customer Reviews ({reviewCount})</h4>
               <button
                 type="button"
                 className="btn-secondary write-review-toggle"
@@ -292,14 +341,14 @@ export default function ProductCard({
               </div>
             )}
 
-            {loadingReviews ? (
+            {loadingReviews && reviews.length === 0 ? (
               <p className="review-loading">Loading reviews…</p>
             ) : reviews.length === 0 ? (
               <p className="review-empty">
                 No reviews yet. Be the first to share your thoughts!
               </p>
             ) : (
-              <div className="dish-reviews-list">
+              <div className="dish-reviews-list" ref={reviewListRef}>
                 {reviews.map((r) => (
                   <div className="dish-review-item" key={r.id}>
                     <div className="review-item-top">
@@ -321,6 +370,8 @@ export default function ProductCard({
                     )}
                   </div>
                 ))}
+                <div ref={reviewEndRef} className="dish-reviews-list-end" aria-hidden="true" />
+                {loadingMoreReviews && <p className="review-loading" role="status">Loading more reviews…</p>}
               </div>
             )}
           </div>
@@ -328,8 +379,8 @@ export default function ProductCard({
 
         {onSelect && (
           <div className="card-footer">
-            <button className="btn-primary" type="button" onClick={handleAdd}>
-              {actionLabel}
+            <button className="btn-primary" type="button" onClick={handleAdd} disabled={isUnavailable}>
+              {isUnavailable ? 'Unavailable' : actionLabel}
             </button>
           </div>
         )}

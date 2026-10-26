@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import '../assets/style/reservations.css';
+import ReservationFloorMap from './ReservationFloorMap';
+import { formatReservationSlot, getLocalReservationDate, RESERVATION_TIME_SLOTS } from '../utils/reservationSlots';
 
 export default function AdminReservations({ token }) {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const todayStr = getLocalReservationDate(currentTime);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Filters state
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
+  const [mapSlot, setMapSlot] = useState('12:00');
+  const [floorTables, setFloorTables] = useState([]);
+  const [loadingFloor, setLoadingFloor] = useState(false);
 
   // Data state
   const [reservations, setReservations] = useState([]);
@@ -22,17 +33,64 @@ export default function AdminReservations({ token }) {
     guest_email: 'walkin@freshbite.cafe',
     reservation_date: todayStr,
     time_slot: '12:00',
-    party_size: 2,
-    seating_pref: 'Indoor',
+    party_size: '',
+    table_id: '',
     special_requests: 'Walk-in party',
     status: 'Seated',
   });
   const [walkinFeedback, setWalkinFeedback] = useState({ msg: '', type: '' });
   const [walkinSubmitting, setWalkinSubmitting] = useState(false);
+  const [walkinTables, setWalkinTables] = useState([]);
+  const [selectedWalkinTable, setSelectedWalkinTable] = useState(null);
 
   useEffect(() => {
     fetchReservations();
   }, [selectedDate, selectedStatus, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const date = selectedDate || todayStr;
+    const refreshFloor = async () => {
+      setLoadingFloor(true);
+      try {
+        const res = await fetch(`/api/tables/availability?date=${encodeURIComponent(date)}&time_slot=${encodeURIComponent(mapSlot)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load floor map.');
+        if (!cancelled) setFloorTables(data.tables || []);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoadingFloor(false);
+      }
+    };
+    refreshFloor();
+    const refreshTimer = setInterval(refreshFloor, 15000);
+    return () => { cancelled = true; clearInterval(refreshTimer); };
+  }, [selectedDate, mapSlot, token]);
+
+  useEffect(() => {
+    if (!showWalkinModal) return;
+    let cancelled = false;
+    setSelectedWalkinTable(null);
+    setWalkinData((prev) => ({ ...prev, table_id: '', party_size: '' }));
+    setWalkinTables([]);
+    if (!walkinData.reservation_date || !walkinData.time_slot) {
+      return () => { cancelled = true; };
+    }
+    const [hour] = walkinData.time_slot.split(':').map(Number);
+    const availabilitySlot = `${String(hour).padStart(2, '0')}:00`;
+    fetch(`/api/tables/availability?date=${encodeURIComponent(walkinData.reservation_date)}&time_slot=${encodeURIComponent(availabilitySlot)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load table availability.');
+      if (!cancelled) setWalkinTables(data.tables || []);
+    }).catch((err) => { if (!cancelled) setWalkinFeedback({ msg: err.message, type: 'error' }); });
+    return () => { cancelled = true; };
+  }, [showWalkinModal, walkinData.reservation_date, walkinData.time_slot, token]);
 
   const fetchReservations = async () => {
     if (!token) return;
@@ -82,6 +140,9 @@ export default function AdminReservations({ token }) {
         setReservations((prev) =>
           prev.map((r) => (r.id === resId ? { ...r, status: newStatus } : r))
         );
+        const mapRes = await fetch(`/api/tables/availability?date=${encodeURIComponent(selectedDate || todayStr)}&time_slot=${encodeURIComponent(mapSlot)}`, { headers: { Authorization: `Bearer ${token}` } });
+        const mapData = await mapRes.json();
+        if (mapRes.ok) setFloorTables(mapData.tables || []);
       } else {
         const d = await res.json();
         alert(d.error || 'Failed to update status.');
@@ -275,6 +336,18 @@ export default function AdminReservations({ token }) {
       {loading && <p className="admin-res-loading">Loading reservations…</p>}
       {error && <p className="admin-res-error">{error}</p>}
 
+      <section className="admin-floor-panel">
+        <div className="admin-floor-heading">
+          <div><h3>Restaurant floor map</h3><p>Table status for {selectedDate || todayStr}</p></div>
+          <label className="admin-filter-item" htmlFor="floor-map-slot">Time slot:
+            <select id="floor-map-slot" value={mapSlot} onChange={(e) => setMapSlot(e.target.value)}>
+              {RESERVATION_TIME_SLOTS.map((slot) => <option key={slot} value={slot}>{formatReservationSlot(slot)}</option>)}
+            </select>
+          </label>
+        </div>
+        {loadingFloor ? <p>Refreshing table statuses…</p> : <ReservationFloorMap tables={floorTables} admin />}
+      </section>
+
       {/* ── View 1: List / Table View ── */}
       {!loading && viewMode === 'list' && (
         <div className="admin-table-wrapper">
@@ -292,7 +365,7 @@ export default function AdminReservations({ token }) {
                   <th>Date</th>
                   <th>Time Slot</th>
                   <th>Party</th>
-                  <th>Seating</th>
+                  <th>Table</th>
                   <th>Requests</th>
                   <th>Status Action</th>
                 </tr>
@@ -313,12 +386,12 @@ export default function AdminReservations({ token }) {
                     </td>
                     <td className="admin-res-date">{r.reservation_date}</td>
                     <td>
-                      <strong>{r.time_slot}</strong>
+                      <strong>{formatReservationSlot(r.time_slot)}</strong>
                     </td>
                     <td>
                       <strong>{r.party_size}</strong> {r.party_size === 1 ? 'guest' : 'guests'}
                     </td>
-                    <td>{r.seating_pref}</td>
+                    <td>{r.table_number ? `${r.table_zone === 'Bar' ? 'Bar-' : ''}${r.table_number} · ${r.table_zone}` : 'Unassigned'}</td>
                     <td className="admin-res-requests">
                       {r.special_requests || '—'}
                     </td>
@@ -343,7 +416,7 @@ export default function AdminReservations({ token }) {
         </div>
       )}
 
-      {/* ── View 2: Calendar / 30-min Slot Grid View ── */}
+      {/* ── View 2: Calendar / Hourly Slot Grid View ── */}
       {!loading && viewMode === 'calendar' && (
         <div className="calendar-view-container">
           <div className="calendar-day-header">
@@ -351,13 +424,11 @@ export default function AdminReservations({ token }) {
               <h3 className="admin-res-timeline-title">
                 Timeline Schedule for {selectedDate || 'All Dates'}
               </h3>
-              <p className="admin-res-timeline-description">
-                Visual view of booked parties organized by 30-minute intervals
+      <p className="admin-res-timeline-description">
+                Visual view of booked tables organized by one-hour intervals
               </p>
             </div>
-            <span className="admin-res-capacity-note">
-              Max 40 seats / slot
-            </span>
+            <span className="admin-res-capacity-note">Availability is tracked by table</span>
           </div>
 
           {sortedSlots.length === 0 ? (
@@ -368,26 +439,15 @@ export default function AdminReservations({ token }) {
             <div className="calendar-slots-grid">
               {sortedSlots.map((slot) => {
                 const parties = timeSlotGroups[slot];
-                const activeParties = parties.filter((p) => p.status !== 'Cancelled');
-                const slotOccupancy = activeParties.reduce((sum, p) => sum + p.party_size, 0);
-                const isNearCapacity = slotOccupancy >= 30 && slotOccupancy < 40;
-                const isFull = slotOccupancy >= 40;
+                const activeParties = parties.filter((p) => ['Pending', 'Confirmed', 'Seated'].includes(p.status));
+                const assignedTables = new Set(activeParties.map((party) => party.table_id).filter(Boolean));
+                const slotOccupancy = assignedTables.size + activeParties.filter((party) => !party.table_id).length;
 
                 return (
                   <div className="slot-block" key={slot}>
                     <div className="slot-block-header">
-                      <span className="slot-block-time">🕒 {slot}</span>
-                      <span
-                        className={`slot-occupancy-pill ${
-                          isFull
-                            ? 'full-capacity'
-                            : isNearCapacity
-                            ? 'near-capacity'
-                            : ''
-                        }`}
-                      >
-                        {slotOccupancy} / 40 seats
-                      </span>
+                      <span className="slot-block-time">🕒 {formatReservationSlot(slot)}</span>
+                      <span className="slot-occupancy-pill">{slotOccupancy} reserved table{slotOccupancy === 1 ? '' : 's'}</span>
                     </div>
 
                     <div className="slot-reservations-list">
@@ -409,7 +469,7 @@ export default function AdminReservations({ token }) {
                           </div>
                           <div className="party-card-details">
                             <span>👥 {p.party_size} guests</span>
-                            <span>• {p.seating_pref}</span>
+                            <span>• {p.table_number ? `${p.table_zone === 'Bar' ? 'Bar-' : ''}${p.table_number}` : 'Unassigned table'}</span>
                           </div>
                           {p.special_requests && (
                             <div className="admin-res-special-requests">
@@ -450,26 +510,12 @@ export default function AdminReservations({ token }) {
                 </div>
 
                 <div className="res-form-group">
-                  <label htmlFor="w-size">Party Size *</label>
-                  <input
-                    id="w-size"
-                    type="number"
-                    min="1"
-                    max="20"
-                    required
-                    value={walkinData.party_size}
-                    onChange={(e) =>
-                      setWalkinData({ ...walkinData, party_size: parseInt(e.target.value, 10) || 1 })
-                    }
-                  />
-                </div>
-
-                <div className="res-form-group">
                   <label htmlFor="w-date">Date</label>
                   <input
                     id="w-date"
                     type="date"
                     required
+                    min={todayStr}
                     value={walkinData.reservation_date}
                     onChange={(e) =>
                       setWalkinData({ ...walkinData, reservation_date: e.target.value })
@@ -478,40 +524,14 @@ export default function AdminReservations({ token }) {
                 </div>
 
                 <div className="res-form-group">
-                  <label htmlFor="w-slot">Time Slot</label>
-                  <select
+                  <label htmlFor="w-slot">Walk-in time</label>
+                  <input
                     id="w-slot"
+                    type="time"
+                    required
                     value={walkinData.time_slot}
                     onChange={(e) => setWalkinData({ ...walkinData, time_slot: e.target.value })}
-                  >
-                    {[
-                      '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-                      '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
-                      '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
-                      '18:00', '18:30', '19:00', '19:30', '20:00', '20:30',
-                      '21:00', '21:30'
-                    ].map((slot) => (
-                      <option key={slot} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="res-form-group">
-                  <label htmlFor="w-seating">Seating Preference</label>
-                  <select
-                    id="w-seating"
-                    value={walkinData.seating_pref}
-                    onChange={(e) =>
-                      setWalkinData({ ...walkinData, seating_pref: e.target.value })
-                    }
-                  >
-                    <option value="Indoor">Indoor</option>
-                    <option value="Outdoor">Outdoor</option>
-                    <option value="Bar">Bar</option>
-                    <option value="No Preference">No Preference</option>
-                  </select>
+                  />
                 </div>
 
                 <div className="res-form-group">
@@ -539,6 +559,32 @@ export default function AdminReservations({ token }) {
                 </div>
               </div>
 
+              <section className="walkin-table-selection">
+                <h4>Select an available table</h4>
+                <ReservationFloorMap
+                  tables={walkinTables}
+                  selectedId={selectedWalkinTable?.id}
+                  onSelect={(table) => {
+                    setSelectedWalkinTable(table);
+                    setWalkinData((prev) => ({ ...prev, table_id: table.id, party_size: 1 }));
+                  }}
+                />
+                {selectedWalkinTable && (
+                  <div className="res-form-group selected-table-guests">
+                    <label htmlFor="w-size">Guests at table (maximum {selectedWalkinTable.capacity})</label>
+                    <input
+                      id="w-size"
+                      type="number"
+                      min="1"
+                      max={selectedWalkinTable.capacity}
+                      required
+                      value={walkinData.party_size}
+                      onChange={(event) => setWalkinData((prev) => ({ ...prev, party_size: event.target.value === '' ? '' : Math.min(Number(event.target.value), selectedWalkinTable.capacity) }))}
+                    />
+                  </div>
+                )}
+              </section>
+
               {walkinFeedback.msg && (
                 <div className={`res-feedback admin-res-feedback ${walkinFeedback.type}`}>
                   {walkinFeedback.msg}
@@ -546,15 +592,15 @@ export default function AdminReservations({ token }) {
               )}
 
               <div className="modal-btn-row">
+                <button type="submit" className="btn-primary" disabled={walkinSubmitting || !selectedWalkinTable || !walkinData.party_size || walkinData.party_size > (selectedWalkinTable?.capacity || 0)}>
+                  {walkinSubmitting ? 'Recording…' : 'Confirm & Seat Walk-in'}
+                </button>
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => setShowWalkinModal(false)}
                 >
                   Cancel
-                </button>
-                <button type="submit" className="btn-primary" disabled={walkinSubmitting}>
-                  {walkinSubmitting ? 'Recording…' : 'Confirm & Seat Walk-in'}
                 </button>
               </div>
             </form>

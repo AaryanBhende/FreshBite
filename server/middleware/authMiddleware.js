@@ -28,6 +28,20 @@ export const verifyAdmin = (req, res, next) => {
   });
 };
 
+export const verifyDriver = (req, res, next) => {
+  verifyToken(req, res, () => {
+    if (req.user && req.user.role === 'driver') return next();
+    return res.status(403).json({ error: 'Access denied. Driver privileges required.' });
+  });
+};
+
+export const verifyKitchen = (req, res, next) => {
+  verifyToken(req, res, () => {
+    if (req.user && req.user.role === 'kitchen') return next();
+    return res.status(403).json({ error: 'Access denied. Kitchen privileges required.' });
+  });
+};
+
 export const optionalAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {

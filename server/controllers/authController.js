@@ -19,6 +19,7 @@ export const register = async (req, res) => {
     if (existing.length > 0) {
       return res.status(400).json({ error: 'Email is already registered. Please log in instead.' });
     }
+    // Public registration always creates customer accounts. Staff accounts use admin-only routes.
     const assignedRole = 'user';
     const hashedPassword = await bcrypt.hash(cleanPassword, 10);
     const userId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;

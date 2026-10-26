@@ -2,7 +2,7 @@ import pool from '../config/db.js';
 
 export const getCustomerSegments = async (_req, res) => {
   try {
-    const [rows] = await pool.query(
+    const [rows] = await pool.query( 
       `SELECT u.id, u.name, u.email,
               COUNT(DISTINCT o.order_id) AS order_count,
               COUNT(DISTINCT CASE WHEN o.created_at >= NOW() - INTERVAL 30 DAY THEN o.order_id END) AS orders_last_30_days,
@@ -61,7 +61,7 @@ export const getCustomerRecommendations = async (req, res) => {
     const preferredCategory = [...categoryCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
     const [menuItems] = await pool.query(
-      `SELECT m.id, m.title, m.category, m.description, m.price, m.img,
+      `SELECT m.id, m.title, m.category, m.description, m.price, m.img, m.is_available,
               COALESCE(SUM(o.quantity), 0) AS units_sold,
               COALESCE((
                 SELECT ROUND(AVG(r.rating), 1)
@@ -75,7 +75,7 @@ export const getCustomerRecommendations = async (req, res) => {
               ) AS review_count
        FROM menu_items m
        LEFT JOIN orders o ON o.title = m.title
-       GROUP BY m.id, m.title, m.category, m.description, m.price, m.img
+       GROUP BY m.id, m.title, m.category, m.description, m.price, m.img, m.is_available
        ORDER BY units_sold DESC, m.title`);
     const sortedItems = menuItems.map((item) => ({ ...item, units_sold: Number(item.units_sold) }));
     const categoryItems = preferredCategory

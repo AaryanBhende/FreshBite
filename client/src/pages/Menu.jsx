@@ -1,58 +1,38 @@
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useRef, useContext } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import { GoogleMap, Marker, useLoadScript } from '@react-google-maps/api';
 import ProductGrid from '../components/ProductGrid';
 import { AuthContext } from '../context/AuthContext';
 import AuthModal from './AuthModal';
 import PromoAnnouncements from '../components/PromoAnnouncements';
-import 'leaflet/dist/leaflet.css';
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+import ReservationFloorMap from '../components/ReservationFloorMap';
+import { formatReservationSlot, RESERVATION_TIME_SLOTS } from '../utils/reservationSlots';
 import '../assets/style/menu.css';
 
-const DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
-L.Marker.prototype.options.icon = DefaultIcon;
-
 const defaultCenter = { lat: 15.268023, lng: 73.967102 };
+const miramarLocation = { lat: 15.4800, lng: 73.8080 };
+const toRadians = (degrees) => degrees * Math.PI / 180;
 
-function LocationMarker({ position, setPosition }) {
-  const map = useMapEvents({
-    click(e) {
-      const lat = parseFloat(e.latlng.lat.toFixed(6));
-      const lng = parseFloat(e.latlng.lng.toFixed(6));
-      setPosition({ lat, lng });
-    },
-  });
-
-  useEffect(() => {
-    if (position) {
-      map.flyTo([position.lat, position.lng], 15);
-    }
-  }, [position, map]);
-
-  return position ? (
-    <Marker
-      position={[position.lat, position.lng]}
-      draggable={true}
-      eventHandlers={{
-        dragend: (e) => {
-          const marker = e.target;
-          const { lat, lng } = marker.getLatLng();
-          setPosition({
-            lat: parseFloat(lat.toFixed(6)),
-            lng: parseFloat(lng.toFixed(6)),
-          });
-        },
-      }}
-    />
-  ) : null;
+function getDeliveryDistanceKm(destination) {
+  const deltaLat = toRadians(destination.lat - miramarLocation.lat);
+  const deltaLng = toRadians(destination.lng - miramarLocation.lng);
+  const rawA = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(toRadians(miramarLocation.lat)) * Math.cos(toRadians(destination.lat)) * Math.sin(deltaLng / 2) ** 2;
+  const a = Math.min(1, Math.max(0, rawA));
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
+const getDefaultReservationDate = () => {
+  const date = new Date();
+  if (date.getHours() > 21 || (date.getHours() === 21 && date.getMinutes() > 0)) date.setDate(date.getDate() + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const getDefaultReservationSlot = () => {
+  const now = new Date();
+  const nextHour = now.getHours() + (now.getMinutes() > 0 ? 1 : 0);
+  return RESERVATION_TIME_SLOTS.find((slot) => slot >= `${String(nextHour).padStart(2, '0')}:00`) || RESERVATION_TIME_SLOTS[0];
+};
 
 export default function Menu() {
   useEffect(() => {
@@ -62,6 +42,9 @@ export default function Menu() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, token } = useContext(AuthContext);
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsError } = useLoadScript({
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+  });
 
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -78,12 +61,15 @@ export default function Menu() {
   const [orderType, setOrderType] = useState('Dine In');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryCoordinates, setDeliveryCoordinates] = useState(defaultCenter);
+  const [tipPercent, setTipPercent] = useState(0);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [geocodingError, setGeocodingError] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showDineSeatingModal, setShowDineSeatingModal] = useState(false);
+  const [showDineReservationModal, setShowDineReservationModal] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [lastOrderId, setLastOrderId] = useState(null);
   const [promotionCode, setPromotionCode] = useState('');
@@ -92,6 +78,17 @@ export default function Menu() {
   const [rushStatus, setRushStatus] = useState(null);
   const [recommendations, setRecommendations] = useState(null);
   const [duplicateDish, setDuplicateDish] = useState('');
+  const [availableTables, setAvailableTables] = useState([]);
+  const [seatingTables, setSeatingTables] = useState([]);
+  const [dineInTable, setDineInTable] = useState(null);
+  const [dineInMode, setDineInMode] = useState('');
+  const [seatedTableId, setSeatedTableId] = useState('');
+  const [reservationDate, setReservationDate] = useState(getDefaultReservationDate);
+  const [reservationSlot, setReservationSlot] = useState(getDefaultReservationSlot);
+  const [reservationGuests, setReservationGuests] = useState(1);
+  const [selectedReservationTable, setSelectedReservationTable] = useState(null);
+  const [loadingDineTables, setLoadingDineTables] = useState(false);
+  const [dineInFeedback, setDineInFeedback] = useState('');
   const formRef = useRef(null);
   const summaryRef = useRef(null);
 
@@ -119,6 +116,7 @@ export default function Menu() {
         ...prev,
         {
           id: item.id,
+          menu_item_id: item.id,
           title: item.title,
           price: Number(item.price),
           category: item.category,
@@ -160,6 +158,11 @@ export default function Menu() {
   }, []);
 
   useEffect(() => {
+    const refreshAvailability = setInterval(fetchMenuItems, 10000);
+    return () => clearInterval(refreshAvailability);
+  }, []);
+
+  useEffect(() => {
     if (!user || !token) { setRecommendations(null); return; }
     fetch('/api/users/recommendations', { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => response.ok ? response.json() : null)
@@ -194,7 +197,17 @@ export default function Menu() {
   const fetchMenuItems = async () => {
     try {
       const res = await fetch('/api/menu');
-      if (res.ok) setMenuItems(await res.json());
+      if (res.ok) {
+        const latestItems = await res.json();
+        setMenuItems(latestItems);
+        const availabilityById = new Map(latestItems.map((item) => [item.id, item.is_available]));
+        setRecommendations((current) => current ? {
+          ...current,
+          items: (current.items || []).map((item) => availabilityById.has(item.id)
+            ? { ...item, is_available: availabilityById.get(item.id) }
+            : item),
+        } : current);
+      }
     } catch (err) {
       console.error('Failed to fetch menu items:', err);
     }
@@ -203,7 +216,10 @@ export default function Menu() {
   const fetchOrders = async () => {
     try {
       const res = await fetch('/api/orders');
-      if (res.ok) setOrders(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(Array.isArray(data) ? data : data.orders || []);
+      }
     } catch (err) {
       console.error('Failed to fetch orders:', err);
     }
@@ -275,6 +291,12 @@ export default function Menu() {
   });
 
   const totalBill = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const deliveryDistanceKm = getDeliveryDistanceKm(deliveryCoordinates);
+  const deliveryFee = orderType === 'Delivery'
+    ? Number((30 + Math.max(0, deliveryDistanceKm - 3) * 5).toFixed(2)) : 0;
+  const tipAmount = orderType === 'Delivery' ? Number((totalBill * tipPercent / 100).toFixed(2)) : 0;
+  const discountedFoodTotal = promotion?.total ?? totalBill;
+  const payableTotal = Number((discountedFoodTotal + deliveryFee + tipAmount).toFixed(2));
 
   useEffect(() => {
     setPromotion(null);
@@ -308,10 +330,70 @@ export default function Menu() {
     } catch (error) { setPromotionMessage(error.message); }
   };
 
+  useEffect(() => {
+    if (!showDineSeatingModal) return undefined;
+    let cancelled = false;
+    setLoadingDineTables(true);
+    fetch('/api/tables')
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load tables.');
+        if (!cancelled) setSeatingTables(data.tables || []);
+      })
+      .catch((error) => { if (!cancelled) setDineInFeedback(error.message); })
+      .finally(() => { if (!cancelled) setLoadingDineTables(false); });
+    return () => { cancelled = true; };
+  }, [showDineSeatingModal]);
+
+  useEffect(() => {
+    if (!showDineReservationModal || !reservationDate || !reservationSlot) return undefined;
+    let cancelled = false;
+    let firstLoad = true;
+    setLoadingDineTables(true);
+    const loadTables = async () => {
+      try {
+        const query = new URLSearchParams({ date: reservationDate, time_slot: reservationSlot });
+        const response = await fetch(`/api/tables/availability?${query}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load table availability.');
+        if (!cancelled) {
+          const tables = data.tables || [];
+          setAvailableTables(tables);
+          setSelectedReservationTable((current) => current && tables.some((table) => table.id === current.id && table.table_status === 'Free') ? current : null);
+        }
+      } catch (error) {
+        if (!cancelled) setDineInFeedback(error.message);
+      } finally {
+        if (!cancelled && firstLoad) setLoadingDineTables(false);
+        firstLoad = false;
+      }
+    };
+    loadTables();
+    const timer = setInterval(loadTables, 15000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [showDineReservationModal, reservationDate, reservationSlot]);
+
+  const handleOrderTypeChange = (type) => {
+    setOrderType(type);
+    if (type === 'Dine In') {
+      setDineInFeedback('');
+      setShowDineSeatingModal(true);
+    } else {
+      setDineInMode('');
+      setDineInTable(null);
+      setSelectedReservationTable(null);
+    }
+  };
+
   const handlePlaceOrderClick = async () => {
     if (cart.length === 0) return;
     if (!user) {
       setShowAuthModal(true);
+      return;
+    }
+    if (orderType === 'Dine In' && !dineInTable) {
+      setDineInFeedback('');
+      setShowDineSeatingModal(true);
       return;
     }
     if (promotionCode.trim()) {
@@ -340,7 +422,28 @@ export default function Menu() {
   const executeOrderPlacement = async () => {
     setShowConfirmModal(false);
     setIsPlacingOrder(true);
+    let reservationId = null;
     try {
+      if (orderType === 'Dine In' && dineInMode === 'reserve') {
+        if (!token || !user?.email) throw new Error('Please sign in again before reserving a table.');
+        const reservationResponse = await fetch('/api/reservations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            guest_name: user.name,
+            guest_email: user.email,
+            reservation_date: reservationDate,
+            time_slot: reservationSlot,
+            party_size: reservationGuests,
+            special_requests: 'Dine-in order',
+            table_id: dineInTable.id,
+          }),
+        });
+        const reservationResult = await reservationResponse.json();
+        if (!reservationResponse.ok) throw new Error(reservationResult.error || 'Could not reserve the selected table.');
+        reservationId = reservationResult.reservation.id;
+      }
+
       const groupOrderId = `group-${Date.now()}`;
       const payload = cart.map((item) => ({
         id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -351,6 +454,7 @@ export default function Menu() {
         price: item.price,
         quantity: item.quantity,
         notes: item.notes,
+        menu_item_id: item.menu_item_id || null,
         completed: 0,
         order_type: orderType,
         address: orderType === 'Delivery' ? deliveryAddress : null,
@@ -358,25 +462,41 @@ export default function Menu() {
           orderType === 'Delivery'
             ? `${deliveryCoordinates.lat},${deliveryCoordinates.lng}`
             : null,
+        table_id: orderType === 'Dine In' ? dineInTable?.id || null : null,
+        table_number: orderType === 'Dine In' ? dineInTable?.table_number || null : null,
+        table_zone: orderType === 'Dine In' ? dineInTable?.zone || null : null,
+        party_size: orderType === 'Dine In' && dineInMode === 'reserve' ? Number(reservationGuests) : null,
       }));
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: payload, promo_code: promotion?.code || '' }),
+        body: JSON.stringify({ items: payload, promo_code: promotion?.code || '',
+          delivery_fee: deliveryFee, tip_percent: orderType === 'Delivery' ? tipPercent : 0,
+          tip_amount: orderType === 'Delivery' ? tipAmount : 0 }),
       });
-      if (res.ok) {
-        setPromotion(null);
-        setPromotionCode('');
-        setCart([]);
-        localStorage.removeItem('freshbite_cart');
-        setLastOrderId(groupOrderId);
-        fetchOrders();
-        setShowSuccessModal(true);
-      } else {
-        const result = await res.json();
-        alert(result.error || 'Order could not be placed. Please try again.');
-      }
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Order could not be placed. Please try again.');
+      setPromotion(null);
+      setPromotionCode('');
+      setTipPercent(0);
+      setCart([]);
+      setDineInMode('');
+      setDineInTable(null);
+      setSelectedReservationTable(null);
+      localStorage.removeItem('freshbite_cart');
+      setLastOrderId(groupOrderId);
+      fetchOrders();
+      setShowSuccessModal(true);
     } catch (err) {
+      if (reservationId && token) {
+        try {
+          await fetch(`/api/reservations/${encodeURIComponent(reservationId)}/cancel`, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch { /* Preserve the order error; reservation cancellation can be handled from the profile. */ }
+      }
+      alert(err.message || 'Order could not be placed. Please try again.');
       console.error('Failed to place order:', err);
     } finally {
       setIsPlacingOrder(false);
@@ -418,6 +538,7 @@ export default function Menu() {
         quantity: Number(formData.quantity),
         notes: formData.notes,
         completed: 0,
+        menu_item_id: activePickId || null,
       };
       setCart([...cart, newItem]);
       if (activePickId) {
@@ -443,6 +564,7 @@ export default function Menu() {
             items={recommendations.items}
             onSelectDish={addRecommendedItem}
             onReviewSubmitted={fetchMenuItems}
+            horizontal
           />
         </section>
       )}
@@ -611,7 +733,7 @@ export default function Menu() {
                     key={type}
                     type="button"
                     className={`btn-type ${orderType === type ? 'active' : ''}`}
-                    onClick={() => setOrderType(type)}
+                    onClick={() => handleOrderTypeChange(type)}
                   >
                     {type}
                   </button>
@@ -695,19 +817,51 @@ export default function Menu() {
                     ))}
                   </ol>
                   <div className="total-bill-container">
-                    <span>Total Bill:</span>
-                    <span>₹{totalBill}</span>
+                    <span>Food Subtotal:</span>
+                    <span>₹{totalBill.toFixed(2)}</span>
                   </div>
+                  {orderType === 'Delivery' && <>
+                    <div className="delivery-charge-row"><span>Delivery distance</span><strong>{deliveryDistanceKm.toFixed(1)} km</strong></div>
+                    <div className="delivery-charge-row"><span>Delivery fee</span><strong>₹{deliveryFee.toFixed(2)}</strong></div>
+                    <fieldset className="delivery-tip-options">
+                      <legend>Tip your delivery driver</legend>
+                      <p>Your full tip goes to your driver.</p>
+                      <div>{[0, 10, 20].map(percent => <label key={percent} className={tipPercent === percent ? 'selected' : ''}>
+                        <input type="radio" name="delivery-tip" value={percent} checked={tipPercent === percent} onChange={() => setTipPercent(percent)} />
+                        <span>{percent === 0 ? 'None' : `${percent}%`}</span>
+                        {percent > 0 && <small>₹{(totalBill * percent / 100).toFixed(2)}</small>}
+                      </label>)}</div>
+                    </fieldset>
+                  </>}
                   <div className="promotion-checkout">
                     <label htmlFor="promotionCode">Promotion code</label>
                     <div className="promotion-input-row">
                       <input id="promotionCode" value={promotionCode} onChange={(event) => { setPromotionCode(event.target.value); setPromotion(null); }} placeholder="Enter code" />
                       <button type="button" className="btn-secondary" onClick={applyPromotion} disabled={!promotionCode.trim()}>Apply</button>
                     </div>
-                    {promotionMessage && <p role="status">{promotionMessage}</p>}
-                    {promotion && <p>Discount: ₹{promotion.discount.toFixed(2)}</p>}
+                    {promotionMessage && !promotion && (
+                      <p className="promotion-feedback error" role="status">{promotionMessage}</p>
+                    )}
+                    {promotion && (
+                      <div className="promotion-summary-card" role="status">
+                        <p className="promotion-feedback success">{promotionMessage}</p>
+                        <p className="promotion-discount">
+                          <span>Discount</span><strong>−₹{promotion.discount.toFixed(2)}</strong>
+                        </p>
+                        <p className="promotion-total">
+                          <span>Total after discount</span><strong>₹{promotion.total.toFixed(2)}</strong>
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  {promotion && <p className="promotion-total">Total after discount: ₹{promotion.total.toFixed(2)}</p>}
+                  <div className="checkout-charge-summary" aria-live="polite">
+                    <p><span>Food total{promotion ? ' after discount' : ''}</span><strong>₹{discountedFoodTotal.toFixed(2)}</strong></p>
+                    {orderType === 'Delivery' && <>
+                      <p><span>Delivery fee</span><strong>₹{deliveryFee.toFixed(2)}</strong></p>
+                      <p><span>Driver tip</span><strong>₹{tipAmount.toFixed(2)}</strong></p>
+                    </>}
+                    <p className="checkout-charge-total"><span>Total</span><strong>₹{payableTotal.toFixed(2)}</strong></p>
+                  </div>
                   <button
                     className="btn-primary place-order-btn"
                     onClick={handlePlaceOrderClick}
@@ -755,6 +909,123 @@ export default function Menu() {
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 
+      {showDineSeatingModal && (
+        <div className="modal-backdrop dine-seating-backdrop">
+          <div className="modal-content dine-seating-modal" role="dialog" aria-modal="true" aria-labelledby="dine-seating-title">
+            <h3 id="dine-seating-title">Are you already seated at a table or do you need to reserve one?</h3>
+            <div className="dine-seating-choice">
+              <label htmlFor="seated-table-select">I’m already seated / have a table</label>
+              <select
+                id="seated-table-select"
+                value={seatedTableId}
+                onChange={(event) => setSeatedTableId(event.target.value)}
+                disabled={loadingDineTables}
+              >
+                <option value="">{loadingDineTables ? 'Loading tables…' : 'Select your current table'}</option>
+                {seatingTables.map((table) => (
+                  <option key={table.id} value={table.id}>
+                    {table.zone === 'Bar' ? `Bar ${table.table_number}` : `Table ${table.table_number}`} · {table.zone}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!seatedTableId || loadingDineTables}
+                onClick={() => {
+                  const table = seatingTables.find((item) => String(item.id) === seatedTableId);
+                  if (!table) return;
+                  setDineInTable(table);
+                  setDineInMode('seated');
+                  setShowDineSeatingModal(false);
+                  setDineInFeedback('');
+                }}
+              >
+                Use this table
+              </button>
+            </div>
+            <div className="dine-seating-divider"><span>or</span></div>
+            <button
+              type="button"
+              className="btn-secondary dine-reserve-choice"
+              onClick={() => {
+                setDineInFeedback('');
+                setSelectedReservationTable(null);
+                setShowDineSeatingModal(false);
+                setShowDineReservationModal(true);
+              }}
+            >
+              I need to reserve a table
+            </button>
+            {dineInFeedback && <p className="dine-seating-feedback" role="alert">{dineInFeedback}</p>}
+            <button type="button" className="dine-seating-close" onClick={() => setShowDineSeatingModal(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {showDineReservationModal && (
+        <div className="modal-backdrop dine-map-backdrop">
+          <div className="modal-content dine-map-modal" role="dialog" aria-modal="true" aria-labelledby="dine-map-title">
+            <h3 id="dine-map-title">Reserve a table for your dine-in order</h3>
+            <div className="dine-reservation-fields">
+              <label>
+                Reservation date
+                <input
+                  type="date"
+                  min={(() => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; })()}
+                  value={reservationDate}
+                  onChange={(event) => { setReservationDate(event.target.value); setSelectedReservationTable(null); }}
+                />
+              </label>
+              <label>
+                One-hour time slot
+                <select value={reservationSlot} onChange={(event) => { setReservationSlot(event.target.value); setSelectedReservationTable(null); }}>
+                  {RESERVATION_TIME_SLOTS.map((slot) => <option key={slot} value={slot}>{formatReservationSlot(slot)}</option>)}
+                </select>
+              </label>
+              {selectedReservationTable && (
+                <label>
+                  Guests (maximum {selectedReservationTable.capacity})
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedReservationTable.capacity}
+                    value={reservationGuests}
+                    onChange={(event) => setReservationGuests(event.target.value === '' ? '' : Math.min(Number(event.target.value), selectedReservationTable.capacity))}
+                  />
+                </label>
+              )}
+            </div>
+            {loadingDineTables ? <p role="status">Loading table availability…</p> : (
+              <ReservationFloorMap
+                tables={availableTables}
+                selectedId={selectedReservationTable?.id}
+                onSelect={(table) => { setSelectedReservationTable(table); setReservationGuests(1); }}
+              />
+            )}
+            {dineInFeedback && <p className="dine-seating-feedback" role="alert">{dineInFeedback}</p>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!selectedReservationTable || !reservationGuests || reservationGuests < 1 || reservationGuests > (selectedReservationTable?.capacity || 0) || loadingDineTables}
+                onClick={() => {
+                  setDineInTable(selectedReservationTable);
+                  setDineInMode('reserve');
+                  setShowDineReservationModal(false);
+                  setShowConfirmModal(true);
+                }}
+              >
+                Continue with this table
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => { setShowDineReservationModal(false); setShowDineSeatingModal(true); }}>
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLocationModal && (
         <div className="modal-backdrop">
           <div className="modal-content location-modal">
@@ -784,17 +1055,29 @@ export default function Menu() {
             </div>
 
             <label className="map-label">Pinpoint on Map (Click or Drag Marker):</label>
-            <MapContainer
-              className="location-map"
-              center={[deliveryCoordinates.lat, deliveryCoordinates.lng]}
-              zoom={13}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <LocationMarker position={deliveryCoordinates} setPosition={setDeliveryCoordinates} />
-            </MapContainer>
+            {googleMapsError ? (
+              <p className="map-load-error">Google Maps could not be loaded.</p>
+            ) : isGoogleMapsLoaded ? (
+              <GoogleMap
+                mapContainerClassName="location-map"
+                center={deliveryCoordinates}
+                zoom={13}
+                options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
+                onClick={(event) => {
+                  if (!event.latLng) return;
+                  setDeliveryCoordinates({ lat: Number(event.latLng.lat().toFixed(6)), lng: Number(event.latLng.lng().toFixed(6)) });
+                }}
+              >
+                <Marker
+                  position={deliveryCoordinates}
+                  draggable
+                  onDragEnd={(event) => {
+                    if (!event.latLng) return;
+                    setDeliveryCoordinates({ lat: Number(event.latLng.lat().toFixed(6)), lng: Number(event.latLng.lng().toFixed(6)) });
+                  }}
+                />
+              </GoogleMap>
+            ) : <div className="location-map map-loading" role="status">Loading map…</div>}
             <p className="map-coords">
               Selected Coordinates: {deliveryCoordinates.lat}, {deliveryCoordinates.lng}
             </p>
@@ -827,11 +1110,18 @@ export default function Menu() {
             <h3>Confirm Order</h3>
             <p>
               Are you sure you want to place this <strong>{orderType}</strong> order amounting to{' '}
-              <strong>₹{promotion?.total ?? totalBill}</strong>?
+              <strong>₹{payableTotal.toFixed(2)}</strong>?
             </p>
             {orderType === 'Delivery' && (
+              <div className="confirm-address">
+                <p><strong>Address:</strong> {deliveryAddress}</p>
+                <p><strong>Delivery fee:</strong> ₹{deliveryFee.toFixed(2)} · <strong>Driver tip:</strong> ₹{tipAmount.toFixed(2)}</p>
+              </div>
+            )}
+            {orderType === 'Dine In' && dineInTable && (
               <p className="confirm-address">
-                <strong>Address:</strong> {deliveryAddress}
+                <strong>Table:</strong> {dineInTable.zone === 'Bar' ? `Bar ${dineInTable.table_number}` : `Table ${dineInTable.table_number}`} · {dineInTable.zone}
+                {dineInMode === 'reserve' && <> · {reservationGuests} guest{Number(reservationGuests) === 1 ? '' : 's'} · {reservationDate} · {formatReservationSlot(reservationSlot)}</>}
               </p>
             )}
             <div className="modal-actions">

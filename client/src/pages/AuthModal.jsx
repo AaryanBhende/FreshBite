@@ -91,7 +91,6 @@ export default function AuthModal({ isOpen, onClose }) {
               />
             </div>
           )}
-
           <div className="auth-form-group">
             <label className="auth-label">Email</label>
             <input

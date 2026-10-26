@@ -59,6 +59,23 @@
 .profile-reservation-details { padding: 0.8rem 1.2rem; color: #555; font-size: 0.88rem; }
 .profile-reservation-details p { margin: 0 0 0.35rem; }
 .profile-reservation-details .profile-reservation-request { margin: 0; }
+.profile-reservation-feedback { margin: -.5rem 0 1rem; color: #386b3e; font-size: .9rem; }
+.profile-reservation-feedback.error { color: #b3261e; }
+.profile-cancel-reservation-btn {
+  min-height: 38px;
+  margin-top: .65rem;
+  padding: .5rem .8rem;
+  border: 1px solid #c94c43;
+  border-radius: 7px;
+  background: #fff;
+  color: #a52f29;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.profile-cancel-reservation-btn:hover:not(:disabled) { background: #fff2f0; }
+.profile-cancel-reservation-btn:disabled { cursor: wait; opacity: .65; }
 .profile-password-heading { margin-top: 1rem; }
 .profile-password-help { margin-bottom: 0.8rem; color: #888; font-size: 0.82rem; }
 .profile-password-confirm { max-width: 280px; }
@@ -364,7 +381,7 @@
 .tracker-page {
   min-height: 100vh;
   background: var(--color-bg, #f8f5f0);
-  padding: 2rem 1rem 4rem;
+  padding: calc(4.5em + 2rem) 1rem 4rem;
 }
 
 .tracker-container {
@@ -533,6 +550,80 @@
   padding: 3rem 1rem;
   color: #777;
   font-size: 1rem;
+}
+
+.tracker-cafe-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #0c4a34;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  font-size: 23px;
+}
+
+.tracker-local-status,
+.tracker-map-section {
+  margin: 0 0 1.8rem;
+  padding: 1.1rem;
+  border: 1px solid #e8eee8;
+  border-radius: 12px;
+  background: #f8fbf8;
+}
+.tracker-local-status { display: flex; align-items: flex-start; gap: 0.85rem; }
+.tracker-local-status-icon { font-size: 1.8rem; line-height: 1; }
+.tracker-local-status h3,
+.tracker-map-section h3 { margin: 0 0 0.35rem; color: #215b35; font-size: 1rem; }
+.tracker-local-status p,
+.tracker-driver-caption,
+.tracker-map-unavailable { color: #626b64; font-size: 0.88rem; line-height: 1.5; }
+.tracker-map { width: 100%; height: 320px; margin-top: 0.75rem; border-radius: 10px; z-index: 0; }
+.tracker-driver-icon {
+  position: relative;
+  z-index: 1000;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #146b3a;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.45);
+  font-size: 24px;
+  line-height: 1;
+}
+.tracker-driver-caption { margin-top: 0.6rem; }
+.tracker-issue-section {
+  margin: 1.5rem 0 0.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #f0c9c6;
+  border-radius: 12px;
+  background: #fff8f7;
+}
+.tracker-issue-section h3 { margin: 0 0 .25rem; color: #a3211b; font-size: 1rem; }
+.tracker-issue-section p { margin: .25rem 0 .75rem; color: #705856; font-size: .88rem; }
+.tracker-issue-form { display: grid; gap: .5rem; margin-top: .85rem; }
+.tracker-issue-form label { color: #72332f; font-size: .88rem; font-weight: 700; }
+.tracker-issue-form select,
+.tracker-issue-form textarea { width: 100%; padding: .7rem .75rem; border: 1px solid #dfb7b3; border-radius: 8px; color: #352b2a; background: #fff; font: inherit; }
+.tracker-issue-form textarea { resize: vertical; }
+.tracker-issue-button,
+.tracker-issue-cancel { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: .6rem 1rem; border: 0; border-radius: 8px; font: inherit; font-weight: 700; cursor: pointer; }
+.tracker-issue-button { background: #b3261e; color: #fff; }
+.tracker-issue-button:hover { background: #8f1d18; }
+.tracker-issue-button:disabled { opacity: .65; cursor: wait; }
+.tracker-issue-cancel { border: 1px solid #dfb7b3; background: #fff; color: #7c3b36; }
+.tracker-issue-actions { display: flex; gap: .5rem; margin-top: .35rem; }
+.tracker-issue-success { color: #21633a !important; }
+.tracker-issue-error { color: #a3211b !important; }
+@media (max-width: 768px) {
+  .tracker-page { padding-top: calc(4em + 1.25rem); }
+  .tracker-card { padding: 1.25rem; }
+  .tracker-map { height: 260px; }
 }
 
 /* ── Tabs inside Profile page ────────────────────────────── */

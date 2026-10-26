@@ -1,17 +1,17 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState } from 'react';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('freshbite_token') || '');
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('freshbite_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+  const [user, setUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('freshbite_user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
     }
-  }, []);
+  });
+  const [token, setToken] = useState(localStorage.getItem('freshbite_token') || '');
 
   const loginUser = (userData, userToken) => {
     setUser(userData);

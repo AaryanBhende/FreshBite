@@ -1,16 +1,56 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import AdminReservations from "../components/AdminReservations";
 import AdminReviews from "../components/AdminReviews";
 import AdminPromotions from "../components/AdminPromotions";
 import AdminCRM from "../components/AdminCRM";
+import AdminEmployees from "../components/AdminEmployees";
 import "../assets/style/menu.css";
 
 const AVAILABLE_TAGS = ["Vegetarian", "Non-Veg", "Vegan", "Gluten-Free"];
 
 export default function AdminMenu() {
   const { token, user } = useContext(AuthContext);
-  const [activeTab, setActiveTab] = useState("menu");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeTab = location.pathname === "/admin" ? "overview" : ({
+    "/admin/operations": "orders",
+    "/admin/marketing": "promotions",
+    "/admin/management": "menu",
+  }[location.pathname] || "overview");
+  const setActiveTab = (tab) => {
+    const section = { overview: "/admin", orders: "/admin/operations", reservations: "/admin/operations", promotions: "/admin/marketing", crm: "/admin/marketing", menu: "/admin/management", reviews: "/admin/management", employees: "/admin/management", rush: "/admin" };
+    const destination = ['menu', 'reviews', 'employees'].includes(tab)
+      ? `/admin/management?view=${tab}`
+      : section[tab] || "/admin";
+    navigate(destination);
+    if (tab === "reservations") setFeatureTab("reservations");
+    else if (tab === "orders") setFeatureTab("orders");
+    else if (tab === "crm") setFeatureTab("crm");
+    else if (tab === "promotions") setFeatureTab("promotions");
+    else if (tab === "reviews") setFeatureTab("reviews");
+    else if (tab === "employees") setFeatureTab("employees");
+    else if (tab === "menu") setFeatureTab("menu");
+    else if (tab === "rush") setFeatureTab("rush");
+  };
+  const [featureTab, setFeatureTab] = useState(() => {
+    const requestedView = new URLSearchParams(location.search).get('view');
+    return location.pathname === '/admin/management' && ['menu', 'reviews', 'employees'].includes(requestedView)
+      ? requestedView : 'orders';
+  });
+  useEffect(() => {
+    if (location.pathname !== '/admin/management') return;
+    const requestedView = new URLSearchParams(location.search).get('view');
+    setFeatureTab(['menu', 'reviews', 'employees'].includes(requestedView) ? requestedView : 'menu');
+  }, [location.pathname, location.search]);
+  const sectionTab = location.pathname === "/admin/operations"
+    ? (featureTab === "reservations" ? "reservations" : "orders")
+    : location.pathname === "/admin/marketing"
+      ? (featureTab === "crm" ? "crm" : "promotions")
+      : location.pathname === "/admin/management"
+      ? (featureTab === "employees" ? "employees" : featureTab === "reviews" ? "reviews" : "menu")
+        : activeTab;
   const [items, setItems] = useState([]);
   const [editingItem, setEditingItem] = useState(null);
   const [file, setFile] = useState(null);
@@ -27,12 +67,20 @@ export default function AdminMenu() {
     fibre: "",
   });
   const [groupedOrders, setGroupedOrders] = useState([]);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersHasMore, setOrdersHasMore] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
+  const [ordersTotalCount, setOrdersTotalCount] = useState(0);
+  const [unreadDeliveryFailureCount, setUnreadDeliveryFailureCount] = useState(0);
   const [expandedOrderIds, setExpandedOrderIds] = useState([]);
   const [rushOverride, setRushOverride] = useState('automatic');
   const [rushMessage, setRushMessage] = useState('');
 
   // Ref used to scroll up to the "Edit Menu Item" heading
   const formRef = useRef(null);
+  const ordersEndRef = useRef(null);
+  const ordersRequestInFlight = useRef(false);
 
   // Mailtrap Notifications State with localStorage persistence
   const [mailtrapMessages, setMailtrapMessages] = useState([]);
@@ -55,14 +103,22 @@ export default function AdminMenu() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "menu") {
+    if (sectionTab === "overview") {
       fetchMenuItems();
-    } else if (activeTab === "orders") {
-      fetchOrders();
-    } else if (activeTab === "rush") {
+      fetch('/api/rush').then((res) => res.json()).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
+    } else if (sectionTab === "menu") {
+      fetchMenuItems();
+    } else if (sectionTab === "rush") {
       fetch('/api/rush').then((res) => res.json()).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
     }
-  }, [activeTab]);
+  }, [sectionTab]);
+
+  useEffect(() => {
+    if (user?.role !== 'admin' || !token) return undefined;
+    fetchOrders({ mode: 'replace' });
+    const interval = setInterval(() => fetchOrders({ mode: 'refresh' }), 10000);
+    return () => clearInterval(interval);
+  }, [sectionTab, token, user?.role]);
 
   useEffect(() => {
     if (user?.role !== "admin" || !token) return;
@@ -71,6 +127,15 @@ export default function AdminMenu() {
     const interval = setInterval(fetchMailtrapMessages, 10000);
     return () => clearInterval(interval);
   }, [token, user, readMessageIds]);
+
+  useEffect(() => {
+    if (sectionTab !== 'orders' || !ordersHasMore || groupedOrders.length >= ordersTotalCount || ordersLoading || ordersLoadingMore || !ordersEndRef.current) return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) fetchOrders({ page: ordersPage + 1, mode: 'append' });
+    }, { rootMargin: '300px' });
+    observer.observe(ordersEndRef.current);
+    return () => observer.disconnect();
+  }, [sectionTab, ordersHasMore, ordersTotalCount, ordersLoading, ordersLoadingMore, ordersPage, groupedOrders.length]);
 
   const fetchMailtrapMessages = async () => {
     try {
@@ -249,22 +314,36 @@ export default function AdminMenu() {
     }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = async ({ page = 1, mode = 'refresh' } = {}) => {
+    if (!token || ordersRequestInFlight.current) return;
+    ordersRequestInFlight.current = true;
+    if (mode === 'append') setOrdersLoadingMore(true);
+    else if (mode === 'replace') setOrdersLoading(true);
     try {
-      const res = await fetch("/api/orders", {
+      const res = await fetch(`/api/orders?page=${page}&limit=10`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         throw new Error(`Server error:${res.status}`);
       }
       const data = await res.json();
-      groupOrdersByGroupId(data);
+      const rows = Array.isArray(data) ? data : data.orders || [];
+      groupOrdersByGroupId(rows, mode);
+      const pagination = data.pagination || {};
+      setOrdersHasMore(Boolean(pagination.hasMore));
+      if (typeof pagination.total === 'number') setOrdersTotalCount(pagination.total);
+      if (typeof data.unreadFailureCount === 'number') setUnreadDeliveryFailureCount(data.unreadFailureCount);
+      if (mode !== 'refresh') setOrdersPage(page);
     } catch (error) {
       console.error("Failed to fetch orders:", error);
+    } finally {
+      ordersRequestInFlight.current = false;
+      setOrdersLoading(false);
+      setOrdersLoadingMore(false);
     }
   };
 
-  const groupOrdersByGroupId = (flatOrders) => {
+  const groupOrdersByGroupId = (flatOrders, mode = 'refresh') => {
     const groups = {};
     flatOrders.forEach((item) => {
       const groupKey = item.order_id || `single_${item.id}`;
@@ -277,18 +356,43 @@ export default function AdminMenu() {
           formattedDate: rawDate.toLocaleDateString(),
           username: item.username || "Guest/Unknown",
           order_type: item.order_type || "Dine In",
+          table_id: item.table_id,
+          table_number: item.table_number,
+          table_zone: item.table_zone,
           address: item.address,
           completed: item.completed,
+          kitchen_status: item.kitchen_status || 'pending',
+          delivery_status: item.delivery_status,
+          driver_id: item.driver_id,
+          driver_name: item.driver_name,
+          delivery_failure_reason: item.delivery_failure_reason,
+          delivery_failure_details: item.delivery_failure_details,
+          delivery_failure_read_at: item.delivery_failure_read_at,
           items: [],
           totalAmount: 0,
         };
       }
       const itemTotal = Number(item.price) * Number(item.quantity);
       groups[groupKey].totalAmount += itemTotal;
+      if (item.kitchen_status === 'ready' || groups[groupKey].kitchen_status !== 'ready' && item.kitchen_status === 'preparing') {
+        groups[groupKey].kitchen_status = item.kitchen_status;
+      }
       groups[groupKey].items.push(item);
     });
 
-    const groupList = Object.values(groups).sort((a, b) => a.createdAt - b.createdAt);
+    const incoming = Object.values(groups);
+    setGroupedOrders((current) => {
+      let combined;
+      if (mode === 'append') {
+        const knownIds = new Set(current.map((group) => group.order_id));
+        combined = [...current, ...incoming.filter((group) => !knownIds.has(group.order_id))];
+      } else if (mode === 'refresh') {
+        const freshIds = new Set(incoming.map((group) => group.order_id));
+        combined = [...incoming, ...current.filter((group) => !freshIds.has(group.order_id))];
+      } else {
+        combined = incoming;
+      }
+      const groupList = combined.sort((a, b) => a.createdAt - b.createdAt);
     const dailyCounters = {};
     const formattedGroups = groupList.map((group) => {
       const day = group.dateString;
@@ -299,10 +403,25 @@ export default function AdminMenu() {
         displayId: `${group.formattedDate}-${orderNum}`,
       };
     });
-    setGroupedOrders(formattedGroups.reverse());
+      return formattedGroups.reverse();
+    });
   };
 
-  const toggleExpandOrder = (orderId) => {
+  const toggleExpandOrder = async (group) => {
+    const orderId = group.order_id;
+    const isOpening = !expandedOrderIds.includes(orderId);
+    if (isOpening && group.delivery_status === 'failed' && !group.delivery_failure_read_at) {
+      try {
+        const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/failure-read`, {
+          method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          setGroupedOrders((orders) => orders.map((order) => order.order_id === orderId
+            ? { ...order, delivery_failure_read_at: new Date().toISOString() } : order));
+          setUnreadDeliveryFailureCount((count) => Math.max(0, count - 1));
+        }
+      } catch (error) { console.error('Could not mark delivery failure as read:', error); }
+    }
     setExpandedOrderIds((prev) =>
       prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
     );
@@ -329,7 +448,7 @@ export default function AdminMenu() {
   const handleToggleGroupCompleted = async (group) => {
     try {
       const newStatus = !group.completed;
-      await Promise.all(
+      const responses = await Promise.all(
         group.items.map((item) =>
           fetch(`/api/orders/${item.id}`, {
             method: "PUT",
@@ -341,6 +460,9 @@ export default function AdminMenu() {
           })
         )
       );
+      if (responses.some((response) => !response.ok)) {
+        throw new Error("One or more order items could not be updated.");
+      }
       fetchOrders();
     } catch (error) {
       console.error("Failed to update group status:", error);
@@ -371,45 +493,62 @@ export default function AdminMenu() {
   return (
     <main className="menu-main admin-main">
       <div className="menu-header admin-header">
-        <h1>Admin Control Panel</h1>
-        <div className="admin-tabs">
-          <button
-            className={`btn-primary ${activeTab === "menu" ? "" : "btn-secondary"}`}
-            onClick={() => setActiveTab("menu")}
-          >
-            Menu Management
-          </button>
-          <button
-            className={`btn-primary ${activeTab === "orders" ? "" : "btn-secondary"}`}
-            onClick={() => setActiveTab("orders")}
-          >
-            Order Management
-          </button>
-          <button
-            className={`btn-primary ${activeTab === "reservations" ? "" : "btn-secondary"}`}
-            onClick={() => setActiveTab("reservations")}
-          >
-            Reservations
-          </button>
-          <button
-            className={`btn-primary ${activeTab === "reviews" ? "" : "btn-secondary"}`}
-            onClick={() => setActiveTab("reviews")}
-          >
-            Reviews &amp; Moderation
-          </button>
-          <button className={`btn-primary ${activeTab === "rush" ? "" : "btn-secondary"}`} onClick={() => setActiveTab("rush")}>
-            Restaurant Rush
-          </button>
-          <button className={`btn-primary ${activeTab === "promotions" ? "" : "btn-secondary"}`} onClick={() => setActiveTab("promotions")}>
-            Promotions
-          </button>
-          <button className={`btn-primary ${activeTab === "crm" ? "" : "btn-secondary"}`} onClick={() => setActiveTab("crm")}>
-            Customer CRM
-          </button>
-        </div>
+        <h1>{location.pathname === "/admin" ? "Admin Dashboard" : location.pathname.endsWith("operations") ? "Operations" : location.pathname.endsWith("marketing") ? "Marketing" : "Management"}</h1>
+        {location.pathname !== "/admin" && <div className="admin-tabs" role="tablist" aria-label="Admin section views">
+          {(location.pathname.endsWith("operations") ? [["orders", "Order Management"], ["reservations", "Reservations"]] : location.pathname.endsWith("marketing") ? [["promotions", "Promotions"], ["crm", "Customer CRM"]] : [["menu", "Menu Management"], ["reviews", "Reviews & Moderation"], ["employees", "Employee Management"]]).map(([tab, label]) =>
+            <button key={tab} type="button" role="tab" aria-selected={sectionTab === tab} className={`btn-primary ${sectionTab === tab ? "" : "btn-secondary"}`} onClick={() => setActiveTab(tab)}>{label}</button>
+          )}
+        </div>}
       </div>
 
-      {activeTab === "menu" && (
+      {unreadDeliveryFailureCount > 0 && <button type="button" className="admin-failure-notice" onClick={() => setActiveTab('orders')}>
+        <strong>{unreadDeliveryFailureCount} unread delivery {unreadDeliveryFailureCount === 1 ? 'failure' : 'failures'}</strong>
+        <span>Open Order Management to review the driver’s reason.</span>
+      </button>}
+
+      {sectionTab === "overview" && (
+        <section className="admin-dashboard" aria-label="Admin dashboard overview">
+          <div className="admin-dashboard-summary">
+            <article className="sidebar-card admin-dashboard-card">
+              <span>Menu items</span><strong>{items.length}</strong>
+              <p>Items on your cafe menu</p>
+            </article>
+            <article className="sidebar-card admin-dashboard-card">
+              <span>Orders</span><strong>{groupedOrders.length}</strong>
+              <p>Stay on top of every order</p>
+            </article>
+            <article className="sidebar-card admin-dashboard-card">
+              <span>Restaurant Rush</span><strong>{rushOverride === "automatic" ? "Automatic" : rushOverride}</strong>
+              <p>Rush status is managed automatically</p>
+              <label className="admin-rush-control" htmlFor="dashboardRushOverride">Change rush mode</label>
+              <select className="admin-control-select" id="dashboardRushOverride" value={rushOverride} onChange={(event) => saveRushOverride(event.target.value)}>
+                <option value="automatic">Automatic</option>
+                <option value="Quiet">Quiet (10–15 min)</option>
+                <option value="Moderate">Moderate (20–30 min)</option>
+                <option value="Busy/Peak">Busy/Peak (45+ min)</option>
+              </select>
+              {rushMessage && <small role="status">{rushMessage}</small>}
+            </article>
+          </div>
+          <div className="sidebar-card admin-dashboard-links">
+            <h2>Your workspace</h2>
+            <p>Everything you need, organized around the way you work.</p>
+            <div className="admin-dashboard-actions">
+              <button type="button" className="admin-workspace-card" onClick={() => setActiveTab("orders")}>
+                <strong>⚡ Operations</strong><span>Order Management · Reservations</span>
+              </button>
+              <button type="button" className="admin-workspace-card" onClick={() => setActiveTab("promotions")}>
+                <strong>📢 Marketing</strong><span>Promotions · Customer CRM</span>
+              </button>
+              <button type="button" className="admin-workspace-card" onClick={() => setActiveTab("menu")}>
+                <strong>🛠️ Management</strong><span>Menu Management · Reviews &amp; Moderation</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {sectionTab === "menu" && (
         <div className="sidebar-card admin-card">
           <h2 ref={formRef}>{editingItem ? "Edit Menu Item" : "Add New Menu Item"}</h2>
           <form onSubmit={handleSubmit}>
@@ -594,10 +733,13 @@ export default function AdminMenu() {
         </div>
       )}
 
-      {activeTab === "orders" && (
+      {sectionTab === "employees" && <AdminEmployees token={token} />}
+
+      {sectionTab === "orders" && (
         <div className="sidebar-card admin-card-orders">
-          <h2>Order Management</h2>
+          <h2>Order Management{unreadDeliveryFailureCount > 0 && <span className="admin-failure-count">{unreadDeliveryFailureCount} new delivery {unreadDeliveryFailureCount === 1 ? 'issue' : 'issues'}</span>}</h2>
           {groupedOrders.length === 0 ? (
+            ordersLoading ? <p className="admin-empty">Loading orders…</p> :
             <p className="admin-empty">No orders placed yet.</p>
           ) : (
             <table className="admin-table">
@@ -617,39 +759,42 @@ export default function AdminMenu() {
                   return (
                     <React.Fragment key={group.order_id}>
                       <tr
-                        onClick={() => toggleExpandOrder(group.order_id)}
+                        onClick={() => toggleExpandOrder(group)}
                         className={`admin-order-row ${isExpanded ? "admin-order-row--expanded" : ""}`}
                       >
                         <td className="admin-order-id-cell">
                           <span className="admin-order-arrow">{isExpanded ? "▼" : "▶"}</span>
                           <strong>{group.displayId}</strong>
+                          {group.delivery_status === 'failed' && !group.delivery_failure_read_at && <span className="admin-failure-unread">New failure</span>}
                         </td>
                         <td className="admin-cell-bold">
                           {group.username}
-                          {group.address && (
-                            <div className="admin-order-address">Address: {group.address}</div>
-                          )}
                         </td>
                         <td>
                           <span className="category-tag">{group.order_type}</span>
+                          {group.table_number && (
+                            <div className="admin-order-address">
+                              {group.table_zone === "Bar" ? "Bar" : "Table"} {group.table_number} · {group.table_zone}
+                            </div>
+                          )}
                         </td>
                         <td className="admin-cell-bold">₹{group.totalAmount.toFixed(2)}</td>
                         <td>
                           <span
                             className={`admin-status ${
-                              group.completed ? "admin-status--completed" : "admin-status--pending"
+                              group.delivery_status === 'failed' ? "admin-status--failed" : group.completed || group.kitchen_status === 'ready' ? "admin-status--completed" : "admin-status--pending"
                             }`}
                           >
-                            {group.completed ? "Completed" : "Pending"}
+                            {group.order_type === 'Delivery' ? (group.delivery_status || (group.kitchen_status === 'ready' ? 'Ready' : group.kitchen_status === 'preparing' ? 'Preparing' : 'Pending')) : group.completed ? "Completed" : group.kitchen_status === 'ready' ? 'Ready' : group.kitchen_status === 'preparing' ? 'Preparing' : 'Pending'}
                           </span>
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
-                          <button
+                          {group.order_type !== 'Delivery' && <button
                             className="btn-secondary admin-btn-sm admin-btn-mark"
                             onClick={() => handleToggleGroupCompleted(group)}
                           >
-                            Mark as {group.completed ? "Pending" : "Completed"}
-                          </button>
+                            {`Mark as ${group.completed ? "Pending" : "Completed"}`}
+                          </button>}
                           <button
                             className="btn-danger admin-btn-sm"
                             onClick={() => handleDeleteGroup(group)}
@@ -661,6 +806,16 @@ export default function AdminMenu() {
                       {isExpanded && (
                         <tr className="admin-order-details-row">
                           <td colSpan="6" className="admin-order-details">
+                            {(group.driver_name || group.address) && (
+                              <div className="admin-order-meta">
+                                {group.driver_name && <div><strong>Driver:</strong> {group.driver_name}</div>}
+                                {group.address && <div><strong>Address:</strong> {group.address}</div>}
+                              </div>
+                            )}
+                            {group.delivery_status === 'failed' && <div className="admin-order-failure">
+                              <div><strong>Failure tag:</strong> {group.delivery_failure_reason || 'Reason not provided.'}</div>
+                              {group.delivery_failure_details && <div className="admin-order-failure-details"><strong>Driver details:</strong> {group.delivery_failure_details}</div>}
+                            </div>}
                             <strong className="admin-order-details-title">
                               Items & Customization Notes:
                             </strong>
@@ -686,18 +841,21 @@ export default function AdminMenu() {
               </tbody>
             </table>
           )}
+          <div ref={ordersEndRef} className="admin-orders-list-end" aria-hidden="true" />
+          {ordersLoadingMore && <p className="admin-orders-loading" role="status">Loading more orders…</p>}
+          {groupedOrders.length > 0 && groupedOrders.length >= ordersTotalCount && <p className="admin-orders-loading">All orders loaded.</p>}
         </div>
       )}
 
-      {activeTab === "reservations" && (
+      {sectionTab === "reservations" && (
         <AdminReservations token={token} />
       )}
 
-      {activeTab === "reviews" && (
+      {sectionTab === "reviews" && (
         <AdminReviews token={token} />
       )}
 
-      {activeTab === "rush" && (
+      {sectionTab === "rush" && (
         <div className="sidebar-card admin-card">
           <h2>Restaurant rush status</h2>
           <p>Choose automatic order-based estimates or set the status manually.</p>
@@ -712,9 +870,9 @@ export default function AdminMenu() {
         </div>
       )}
 
-      {activeTab === "promotions" && <AdminPromotions token={token} />}
+      {sectionTab === "promotions" && <AdminPromotions token={token} />}
 
-      {activeTab === "crm" && <AdminCRM token={token} />}
+      {sectionTab === "crm" && <AdminCRM token={token} />}
 
       {/* Floating Notification Bubble Icon */}
       <div className="admin-mail-fab">

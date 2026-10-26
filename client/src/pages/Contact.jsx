@@ -1,27 +1,16 @@
-import {useEffect} from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
+import { useEffect } from 'react';
+import { GoogleMap, InfoWindow, Marker, useLoadScript } from '@react-google-maps/api';
 import ContactForm from '../components/ContactForm';
 import '../assets/style/contact.css';
 
-import 'leaflet/dist/leaflet.css';
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-// Configure Leaflet marker icon
-const DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34]
-});
-L.Marker.prototype.options.icon = DefaultIcon;
 
 // Fixed coordinates for Miramar, Panaji, Goa (403001)
-const miramarLocation = [15.4800, 73.8080];
+const miramarLocation = { lat: 15.4800, lng: 73.8080 };
 
 export default function Contact() {
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+  });
   useEffect(() => {
     window.scrollTo({
       top: 70,
@@ -36,24 +25,21 @@ export default function Contact() {
           <ContactForm />
           
           <figure className="map-container contact-map-frame">
-            <MapContainer
-              center={miramarLocation}
-              zoom={15}
-              scrollWheelZoom={false}
-              className="contact-map"
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <Marker position={miramarLocation}>
-                <Popup>
-                  <strong>FreshBite Cafe</strong>
-                  <br />
-                  Miramar, Panaji, Goa 403001
-                </Popup>
-              </Marker>
-            </MapContainer>
+            {loadError ? (
+              <div className="contact-map map-load-error" role="status">Google Maps could not be loaded.</div>
+            ) : isLoaded ? (
+              <GoogleMap
+                mapContainerClassName="contact-map"
+                center={miramarLocation}
+                zoom={15}
+                options={{ scrollwheel: false, streetViewControl: false, mapTypeControl: false }}
+              >
+                <Marker position={miramarLocation} title="FreshBite Cafe" />
+                <InfoWindow position={miramarLocation}>
+                  <div><strong>FreshBite Cafe</strong><br />Miramar, Panaji, Goa 403001</div>
+                </InfoWindow>
+              </GoogleMap>
+            ) : <div className="contact-map map-loading" role="status">Loading map…</div>}
           </figure>
         </div>
       </section>

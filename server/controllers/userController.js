@@ -76,3 +76,71 @@ export const updateProfile = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+const EMPLOYEE_ROLES = new Set(['driver', 'kitchen']);
+const employeeId = () => `employee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+export const getEmployees = async (_req, res) => {
+  try {
+    const [employees] = await pool.query(
+      "SELECT id, name, email, role, created_at FROM users WHERE role IN ('driver', 'kitchen') ORDER BY role, name"
+    );
+    res.json(employees);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+};
+
+export const createEmployee = async (req, res) => {
+  const { name, email, password, role } = req.body;
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' ||
+      !name.trim() || !email.trim() || !password.trim() || !EMPLOYEE_ROLES.has(role)) {
+    return res.status(400).json({ error: 'Name, email, password, and a valid employee type are required.' });
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim();
+  const cleanPassword = password.trim();
+  if (cleanName.length > 100 || cleanEmail.length > 150 || !/^\S+@\S+\.\S+$/.test(cleanEmail)) return res.status(400).json({ error: 'Enter a valid name and email address.' });
+  if (cleanPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  try {
+    const hashedPassword = await bcrypt.hash(cleanPassword, 10);
+    const id = employeeId();
+    await pool.query('INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)', [id, cleanName, cleanEmail, hashedPassword, role]);
+    res.status(201).json({ employee: { id, name: cleanName, email: cleanEmail, role } });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'An account with that email already exists.' });
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateEmployee = async (req, res) => {
+  const { name, email, password } = req.body;
+  if (typeof name !== 'string' || typeof email !== 'string' || !name.trim() || !email.trim()) return res.status(400).json({ error: 'Name and email are required.' });
+  if (name.trim().length > 100 || email.trim().length > 150 || !/^\S+@\S+\.\S+$/.test(email.trim())) return res.status(400).json({ error: 'Enter a valid name and email address.' });
+  if (password != null && typeof password !== 'string') return res.status(400).json({ error: 'Password must be text.' });
+  if (password && password.trim().length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  const cleanName = name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    const [employees] = await pool.query("SELECT id FROM users WHERE id = ? AND role IN ('driver', 'kitchen')", [req.params.id]);
+    if (!employees.length) return res.status(404).json({ error: 'Employee not found.' });
+    const values = [cleanName, cleanEmail];
+    let passwordSql = '';
+    if (password) {
+      passwordSql = ', password = ?';
+      values.push(await bcrypt.hash(password.trim(), 10));
+    }
+    values.push(req.params.id);
+    await pool.query(`UPDATE users SET name = ?, email = ?${passwordSql} WHERE id = ?`, values);
+    res.json({ employee: { id: req.params.id, name: cleanName, email: cleanEmail } });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'An account with that email already exists.' });
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const deleteEmployee = async (req, res) => {
+  try {
+    const [result] = await pool.query("DELETE FROM users WHERE id = ? AND role IN ('driver', 'kitchen')", [req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Employee not found.' });
+    res.json({ success: true, message: 'Employee deleted.' });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+};

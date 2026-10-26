@@ -166,3 +166,14 @@ export const setFavorite = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+export const setAvailability = async (req, res) => {
+  const available = req.body.is_available;
+  if (available !== true && available !== false && available !== 0 && available !== 1)
+    return res.status(400).json({ error: 'is_available must be a boolean.' });
+  try {
+    const [result] = await pool.query('UPDATE menu_items SET is_available = ? WHERE id = ?', [available ? 1 : 0, req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Menu item not found.' });
+    res.json({ message: 'Availability updated.', is_available: Boolean(available) });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+};

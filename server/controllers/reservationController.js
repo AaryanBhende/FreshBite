@@ -1,20 +1,11 @@
 import pool from '../config/db.js';
 
-// Total cafe capacity per 30-min time slot
-export const CAFE_CAPACITY_LIMIT = 40;
-
-// Valid operational 30-minute time slots (09:00 to 21:30)
-export const TIME_SLOTS = [
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
-  '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
-  '18:00', '18:30', '19:00', '19:30', '20:00', '20:30',
-  '21:00', '21:30'
-];
+// One-hour reservation blocks, represented by their start time.
+export const TIME_SLOTS = Array.from({ length: 13 }, (_, hour) => `${String(hour + 9).padStart(2, '0')}:00`);
 
 /**
  * GET /api/reservations/availability?date=YYYY-MM-DD
- * Returns remaining seats and availability status for all 30-min time slots on a given date.
+ * Returns free table counts and availability status for all one-hour slots on a date.
  */
 export const getAvailability = async (req, res) => {
   const { date } = req.query;
@@ -29,36 +20,40 @@ export const getAvailability = async (req, res) => {
   }
 
   try {
-    // Query sum of party sizes per slot for active statuses (Pending, Confirmed, Seated)
+    const [[tableCountRow]] = await pool.query('SELECT COUNT(*) AS total_tables FROM `tables`');
+    const totalTables = Number(tableCountRow.total_tables);
     const [rows] = await pool.query(
-      `SELECT time_slot, COALESCE(SUM(party_size), 0) AS total_reserved
+      `SELECT DISTINCT table_id, time_slot
        FROM reservations
        WHERE reservation_date = ?
-         AND status IN ('Pending', 'Confirmed', 'Seated')
-       GROUP BY time_slot`,
+         AND table_id IS NOT NULL
+         AND status IN ('Pending', 'Confirmed', 'Seated')`,
       [date]
     );
 
-    const slotMap = new Map();
-    for (const row of rows) {
-      slotMap.set(row.time_slot, Number(row.total_reserved));
-    }
-
     const slots = TIME_SLOTS.map((slot) => {
-      const reserved = slotMap.get(slot) || 0;
-      const available = Math.max(0, CAFE_CAPACITY_LIMIT - reserved);
+      const start = Number(slot.slice(0, 2)) * 60;
+      const end = start + 60;
+      const reserved = new Set(rows.filter((row) => {
+        const [hour, minute] = String(row.time_slot).split(':').map(Number);
+        const reservationStart = hour * 60 + minute;
+        return reservationStart < end && reservationStart + 60 > start;
+      }).map((row) => Number(row.table_id))).size;
+      const available = Math.max(0, totalTables - reserved);
       return {
         time_slot: slot,
         reserved,
         available,
-        capacity: CAFE_CAPACITY_LIMIT,
+        available_tables: available,
+        total_tables: totalTables,
+        capacity: totalTables,
         is_available: available > 0,
       };
     });
 
     res.json({
       date,
-      capacity: CAFE_CAPACITY_LIMIT,
+      capacity: totalTables,
       slots,
     });
   } catch (error) {
@@ -69,7 +64,7 @@ export const getAvailability = async (req, res) => {
 
 /**
  * POST /api/reservations
- * Creates a new reservation after validating availability against cafe capacity constraint.
+ * Creates a reservation against one specific table and its capacity.
  */
 export const createReservation = async (req, res) => {
   const {
@@ -78,24 +73,24 @@ export const createReservation = async (req, res) => {
     reservation_date,
     time_slot,
     party_size,
-    seating_pref = 'No Preference',
     special_requests = '',
+    table_id,
   } = req.body;
 
   // 1. Basic validation
-  if (!guest_name || !guest_email || !reservation_date || !time_slot || !party_size) {
+  if (!guest_name || !guest_email || !reservation_date || !time_slot || !party_size || !table_id) {
     return res.status(400).json({
-      error: 'guest_name, guest_email, reservation_date, time_slot, and party_size are required.',
+      error: 'guest_name, guest_email, reservation_date, time_slot, party_size, and table_id are required.',
     });
   }
 
   const cleanName = String(guest_name).trim();
   const cleanEmail = String(guest_email).trim().toLowerCase();
-  const numPartySize = parseInt(party_size, 10);
+  const numPartySize = Number(party_size);
 
-  if (isNaN(numPartySize) || numPartySize < 1 || numPartySize > 20) {
+  if (!Number.isInteger(numPartySize) || numPartySize < 1) {
     return res.status(400).json({
-      error: 'Party size must be between 1 and 20 guests.',
+      error: 'Party size must be a positive whole number.',
     });
   }
 
@@ -105,7 +100,7 @@ export const createReservation = async (req, res) => {
 
   if (!TIME_SLOTS.includes(time_slot)) {
     return res.status(400).json({
-      error: `Invalid time slot. Allowed slots (30-min intervals) from 09:00 to 21:30.`,
+      error: 'Invalid time slot. Choose an available one-hour slot.',
     });
   }
 
@@ -115,46 +110,51 @@ export const createReservation = async (req, res) => {
     return res.status(400).json({ error: 'Cannot book reservations in the past.' });
   }
 
-  const validSeating = ['Indoor', 'Outdoor', 'Bar', 'No Preference'];
-  const cleanSeating = validSeating.includes(seating_pref) ? seating_pref : 'No Preference';
-
   const userId = req.user ? req.user.id : null;
+  const tableId = table_id === undefined || table_id === null || table_id === '' ? null : Number(table_id);
+  if (tableId !== null && (!Number.isInteger(tableId) || tableId < 1)) {
+    return res.status(400).json({ error: 'table_id must be a valid table number.' });
+  }
 
   // 2. Transaction with availability check locking the target slot
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    // Query sum of party sizes with FOR UPDATE to prevent race condition overbooking
-    const [checkRows] = await connection.query(
-      `SELECT COALESCE(SUM(party_size), 0) AS current_reserved
-       FROM reservations
-       WHERE reservation_date = ?
-         AND time_slot = ?
-         AND status IN ('Pending', 'Confirmed', 'Seated')
-       FOR UPDATE`,
-      [reservation_date, time_slot]
-    );
-
-    const currentReserved = Number(checkRows[0].current_reserved);
-    const available = CAFE_CAPACITY_LIMIT - currentReserved;
-
-    if (currentReserved + numPartySize > CAFE_CAPACITY_LIMIT) {
-      await connection.rollback();
-      return res.status(409).json({
-        error: `Capacity exceeded for ${time_slot} on ${reservation_date}. Only ${available} seat(s) remaining (requested ${numPartySize}).`,
-        available,
-        requested: numPartySize,
-      });
+    if (tableId !== null) {
+      const [tableRows] = await connection.query(
+        'SELECT id, zone, capacity FROM `tables` WHERE id = ? FOR UPDATE',
+        [tableId]
+      );
+      if (!tableRows.length) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'Selected table does not exist.' });
+      }
+      const table = tableRows[0];
+      if (table.capacity < numPartySize) {
+        await connection.rollback();
+        return res.status(400).json({ error: `Selected table seats up to ${table.capacity} guests.` });
+      }
+      const [conflicts] = await connection.query(
+        `SELECT id FROM reservations WHERE table_id = ? AND reservation_date = ?
+         AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
+         AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
+         AND status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
+        [tableId, reservation_date, time_slot, time_slot]
+      );
+      if (conflicts.length) {
+        await connection.rollback();
+        return res.status(409).json({ error: 'That table was just booked. Please choose another table.' });
+      }
     }
 
     const reservationId = `res-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const status = 'Confirmed'; // Auto-confirmed when capacity check succeeds
+    const status = 'Confirmed'; // Auto-confirmed after the chosen table is verified.
 
     await connection.query(
       `INSERT INTO reservations 
-       (id, user_id, guest_name, guest_email, reservation_date, time_slot, party_size, seating_pref, special_requests, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, guest_name, guest_email, reservation_date, time_slot, party_size, seating_pref, special_requests, status, table_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         reservationId,
         userId,
@@ -163,9 +163,10 @@ export const createReservation = async (req, res) => {
         reservation_date,
         time_slot,
         numPartySize,
-        cleanSeating,
+        'No Preference',
         special_requests ? String(special_requests).trim() : null,
         status,
+        tableId,
       ]
     );
 
@@ -182,9 +183,10 @@ export const createReservation = async (req, res) => {
         reservation_date,
         time_slot,
         party_size: numPartySize,
-        seating_pref: cleanSeating,
+        seating_pref: 'No Preference',
         special_requests,
         status,
+        table_id: tableId,
       },
     });
   } catch (error) {
@@ -217,6 +219,45 @@ export const getUserReservations = async (req, res) => {
 };
 
 /**
+ * PUT /api/reservations/:id/cancel
+ * Allows an authenticated customer to cancel their own pending/confirmed reservation.
+ */
+export const cancelUserReservation = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, status FROM reservations WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Reservation not found.' });
+    }
+    if (!['Pending', 'Confirmed'].includes(rows[0].status)) {
+      return res.status(409).json({ error: 'Only pending or confirmed reservations can be cancelled.' });
+    }
+
+    const [updateResult] = await pool.query(
+      'UPDATE reservations SET status = \'Cancelled\' WHERE id = ? AND user_id = ? AND status IN (\'Pending\', \'Confirmed\')',
+      [id, userId]
+    );
+    if (updateResult.affectedRows === 0) {
+      return res.status(409).json({ error: 'This reservation can no longer be cancelled.' });
+    }
+    const [reservationRows] = await pool.query(
+      `SELECT r.*, t.table_number, t.zone AS table_zone
+       FROM reservations r LEFT JOIN \`tables\` t ON r.table_id = t.id
+       WHERE r.id = ? AND r.user_id = ?`,
+      [id, userId]
+    );
+    res.json({ success: true, message: 'Reservation cancelled.', reservation: reservationRows[0] });
+  } catch (error) {
+    console.error('cancelUserReservation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * GET /api/reservations/admin (Admin only)
  * Filter by date (optional), status (optional), search text (guest_name or email).
  */
@@ -225,9 +266,11 @@ export const getAdminReservations = async (req, res) => {
 
   try {
     let sql = `
-      SELECT r.*, u.name AS account_name, u.email AS account_email
+      SELECT r.*, t.table_number, t.zone AS table_zone, t.capacity AS table_capacity,
+             u.name AS account_name, u.email AS account_email
       FROM reservations r
       LEFT JOIN users u ON r.user_id = u.id
+      LEFT JOIN \`tables\` t ON r.table_id = t.id
       WHERE 1=1
     `;
     const params = [];
@@ -283,7 +326,12 @@ export const updateReservationStatus = async (req, res) => {
       return res.status(404).json({ error: 'Reservation not found.' });
     }
 
-    res.json({ success: true, message: `Reservation status updated to ${status}.` });
+    const [rows] = await pool.query(
+      `SELECT r.*, t.table_number, t.zone AS table_zone, t.capacity AS table_capacity
+       FROM reservations r LEFT JOIN \`tables\` t ON r.table_id = t.id WHERE r.id = ?`,
+      [id]
+    );
+    res.json({ success: true, message: `Reservation status updated to ${status}.`, reservation: rows[0] });
   } catch (error) {
     console.error('updateReservationStatus error:', error);
     res.status(500).json({ error: error.message });
@@ -301,54 +349,75 @@ export const createWalkInReservation = async (req, res) => {
     reservation_date,
     time_slot,
     party_size,
-    seating_pref = 'No Preference',
+    table_id,
     special_requests = 'Walk-in party',
     status = 'Seated',
   } = req.body;
 
-  if (!reservation_date || !time_slot || !party_size) {
+  if (!reservation_date || !time_slot || !party_size || !table_id) {
     return res.status(400).json({
-      error: 'reservation_date, time_slot, and party_size are required.',
+      error: 'reservation_date, time_slot, party_size, and table_id are required.',
     });
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(reservation_date))) {
+    return res.status(400).json({ error: 'Invalid reservation_date format (YYYY-MM-DD).' });
+  }
 
-  const numPartySize = parseInt(party_size, 10);
-  if (isNaN(numPartySize) || numPartySize < 1) {
+  const numPartySize = Number(party_size);
+  if (!Number.isInteger(numPartySize) || numPartySize < 1) {
     return res.status(400).json({ error: 'Party size must be a positive number.' });
+  }
+
+  const tableId = Number(table_id);
+  if (!Number.isInteger(tableId) || tableId < 1) {
+    return res.status(400).json({ error: 'table_id must be a valid table number.' });
+  }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time_slot))) {
+    return res.status(400).json({ error: 'Invalid walk-in time. Use a valid time in HH:mm format.' });
+  }
+  const [walkinHour, walkinMinute] = String(time_slot).split(':').map(Number);
+  if (walkinHour < 9 || walkinHour > 21 || (walkinHour === 21 && walkinMinute > 0)) {
+    return res.status(400).json({ error: 'Walk-in time must be between 09:00 and 21:00.' });
+  }
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (reservation_date < todayStr) {
+    return res.status(400).json({ error: 'Cannot record a walk-in for a past date.' });
   }
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    // Check capacity for walk-in too
-    const [checkRows] = await connection.query(
-      `SELECT COALESCE(SUM(party_size), 0) AS current_reserved
-       FROM reservations
-       WHERE reservation_date = ?
-         AND time_slot = ?
-         AND status IN ('Pending', 'Confirmed', 'Seated')
-       FOR UPDATE`,
-      [reservation_date, time_slot]
+    const [tableRows] = await connection.query(
+      'SELECT capacity FROM `tables` WHERE id = ? FOR UPDATE',
+      [tableId]
     );
-
-    const currentReserved = Number(checkRows[0].current_reserved);
-    const available = CAFE_CAPACITY_LIMIT - currentReserved;
-
-    if (currentReserved + numPartySize > CAFE_CAPACITY_LIMIT) {
+    if (!tableRows.length) {
       await connection.rollback();
-      return res.status(409).json({
-        error: `Cafe at capacity for ${time_slot} on ${reservation_date}. Only ${available} seat(s) remaining (walk-in needs ${numPartySize}).`,
-        available,
-      });
+      return res.status(400).json({ error: 'Selected table does not exist.' });
+    }
+    if (numPartySize > Number(tableRows[0].capacity)) {
+      await connection.rollback();
+      return res.status(400).json({ error: `Selected table seats up to ${tableRows[0].capacity} guests.` });
+    }
+    const [conflicts] = await connection.query(
+      `SELECT id FROM reservations WHERE table_id = ? AND reservation_date = ?
+       AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
+       AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
+       AND status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
+      [tableId, reservation_date, time_slot, time_slot]
+    );
+    if (conflicts.length) {
+      await connection.rollback();
+      return res.status(409).json({ error: 'That table is already booked for this time slot.' });
     }
 
     const reservationId = `walkin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     await connection.query(
       `INSERT INTO reservations 
-       (id, user_id, guest_name, guest_email, reservation_date, time_slot, party_size, seating_pref, special_requests, status)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, guest_name, guest_email, reservation_date, time_slot, party_size, seating_pref, special_requests, status, table_id)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, 'No Preference', ?, ?, ?)`,
       [
         reservationId,
         String(guest_name).trim(),
@@ -356,9 +425,9 @@ export const createWalkInReservation = async (req, res) => {
         reservation_date,
         time_slot,
         numPartySize,
-        seating_pref,
         special_requests,
         status,
+        tableId,
       ]
     );
 
@@ -368,6 +437,7 @@ export const createWalkInReservation = async (req, res) => {
       success: true,
       message: 'Walk-in party recorded successfully!',
       reservation_id: reservationId,
+      table_id: tableId,
     });
   } catch (error) {
     await connection.rollback();

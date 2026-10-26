@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import '../assets/style/menu.css';
 
 export default function AdminReviews({ token }) {
@@ -8,23 +8,41 @@ export default function AdminReviews({ token }) {
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'flagged'
   const [searchQuery, setSearchQuery] = useState('');
   const [actionInProgress, setActionInProgress] = useState(null);
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextPage, setNextPage] = useState(2);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
+  const requestInFlight = useRef(false);
+  const requestController = useRef(null);
+  const requestSequence = useRef(0);
+  const listEndRef = useRef(null);
 
   useEffect(() => {
-    fetchReviews();
-  }, [statusFilter, token]);
+    fetchReviews({ page: 1, append: false });
+  }, [statusFilter, token, appliedSearch]);
 
-  const fetchReviews = async () => {
-    if (!token) return;
-    setLoading(true);
+  const fetchReviews = async ({ page = 1, append = false } = {}) => {
+    if (!token || (append && requestInFlight.current)) return;
+    if (!append) requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    const requestId = ++requestSequence.current;
+    requestInFlight.current = true;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError('');
 
     try {
       const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', '10');
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (searchQuery.trim()) params.append('search', searchQuery.trim());
+      if (appliedSearch) params.append('search', appliedSearch);
 
       const res = await fetch(`/api/ratings/admin?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -32,17 +50,41 @@ export default function AdminReviews({ token }) {
         throw new Error(d.error || 'Failed to fetch reviews.');
       }
       const data = await res.json();
-      setReviews(data);
+      if (requestId !== requestSequence.current) return;
+      const pageReviews = Array.isArray(data) ? data : data.reviews || [];
+      setReviews((current) => {
+        if (!append) return pageReviews;
+        const seen = new Set(current.map((review) => review.id));
+        return [...current, ...pageReviews.filter((review) => !seen.has(review.id))];
+      });
+      const pagination = data.pagination || {};
+      if (!append) setReviewsTotal(Number(pagination.total ?? pageReviews.length));
+      setHasMore(Boolean(pagination.hasMore));
+      setNextPage(page + 1);
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) {
+        requestInFlight.current = false;
+        requestController.current = null;
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   };
 
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore || !listEndRef.current) return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) fetchReviews({ page: nextPage, append: true });
+    }, { rootMargin: '250px' });
+    observer.observe(listEndRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, nextPage, reviews.length]);
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchReviews();
+    setAppliedSearch(searchQuery.trim());
   };
 
   const handleToggleModeration = async (review) => {
@@ -126,7 +168,7 @@ export default function AdminReviews({ token }) {
                 className="btn-secondary admin-review-clear-button"
                 onClick={() => {
                   setSearchQuery('');
-                  fetchReviews();
+                  setAppliedSearch('');
                 }}
               >
                 Clear
@@ -137,7 +179,7 @@ export default function AdminReviews({ token }) {
 
         <button
           type="button"
-          onClick={fetchReviews}
+          onClick={() => fetchReviews({ page: 1, append: false })}
           className="btn-secondary admin-review-refresh-button"
         >
           🔄 Refresh
@@ -147,26 +189,27 @@ export default function AdminReviews({ token }) {
       {/* ── Stats Summary Bar ── */}
       <div className="admin-res-stats">
         <div className="res-stat-card">
-          <div className="res-stat-number">{totalCount}</div>
-          <div className="res-stat-label">Total Reviews</div>
+          <div className="res-stat-number">{reviewsTotal}</div>
+          <div className="res-stat-label">Loaded / Total Reviews</div>
+          <small>{totalCount} loaded</small>
         </div>
         <div className="res-stat-card">
           <div className="res-stat-number review-stat-active">
             {activeCount}
           </div>
-          <div className="res-stat-label">Active (Live)</div>
+          <div className="res-stat-label">Loaded Active</div>
         </div>
         <div className="res-stat-card">
           <div className="res-stat-number review-stat-flagged">
             {flaggedCount}
           </div>
-          <div className="res-stat-label">Flagged / Soft-Deleted</div>
+          <div className="res-stat-label">Loaded Flagged</div>
         </div>
         <div className="res-stat-card">
           <div className="res-stat-number review-stat-average">
             ★ {avgStars}
           </div>
-          <div className="res-stat-label">Average Score</div>
+          <div className="res-stat-label">Loaded Average Score</div>
         </div>
       </div>
 
@@ -174,9 +217,9 @@ export default function AdminReviews({ token }) {
       {error && <p className="admin-review-error">{error}</p>}
 
       {/* ── Reviews Moderation Table ── */}
-      {!loading && (
+      {(!loading || reviews.length > 0) && (
         <div className="admin-table-wrapper">
-          {reviews.length === 0 ? (
+          {reviews.length === 0 && !loading ? (
             <p className="admin-review-empty">
               No reviews match the selected filter.
             </p>
@@ -283,6 +326,9 @@ export default function AdminReviews({ token }) {
               </tbody>
             </table>
           )}
+          <div ref={listEndRef} className="admin-review-list-end" aria-hidden="true" />
+          {loadingMore && <p className="admin-review-loading" role="status">Loading more reviews…</p>}
+          {!hasMore && reviews.length > 0 && <p className="admin-review-loading">All matching reviews loaded.</p>}
         </div>
       )}
     </div>

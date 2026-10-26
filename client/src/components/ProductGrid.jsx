@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ProductCard from './ProductCard';
 import '../assets/style/menu.css';
 
-export default function ProductGrid({ items, onSelectDish, onReviewSubmitted }) {
+export default function ProductGrid({ items, onSelectDish, onReviewSubmitted, horizontal = false }) {
   const [expandedDish, setExpandedDish] = useState(null);
   const closeExpanded = () => setExpandedDish(null);
 
@@ -21,13 +21,19 @@ export default function ProductGrid({ items, onSelectDish, onReviewSubmitted }) 
     };
   }, [expandedDish]);
 
+  useEffect(() => {
+    if (!expandedDish) return;
+    const currentDish = items.find((item) => item.id === expandedDish.id);
+    if (currentDish && currentDish.is_available !== expandedDish.is_available) setExpandedDish(currentDish);
+  }, [items, expandedDish]);
+
   if (items.length === 0) {
     return <p className="no-items">No dishes match your search/filter.</p>;
   }
 
   return (
     <>
-      <div className="catalog-grid">
+      <div className={`catalog-grid${horizontal ? ' catalog-grid--horizontal' : ''}`}>
         {items.map((dish) => (
           <ProductCard
             key={dish.id}

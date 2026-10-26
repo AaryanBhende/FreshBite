@@ -9,8 +9,9 @@ import {
   addMenuItem,
   updateMenuItem,
   deleteMenuItem,
+  setAvailability,
 } from '../controllers/menuController.js';
-import { verifyToken, verifyAdmin } from '../middleware/authMiddleware.js';
+import { verifyToken, verifyAdmin, verifyKitchen } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -35,6 +36,10 @@ router.get('/', getMenuItems);
 // Favorite routes (placed before /:id routes to avoid route matching conflicts)
 router.get('/favorites', getFavoriteItems);
 router.put('/:id/favorite', verifyToken, verifyAdmin, setFavorite);
+router.put('/:id/availability', verifyToken, (req, res, next) => {
+  if (req.user?.role === 'admin') return next();
+  return verifyKitchen(req, res, next);
+}, setAvailability);
 
 // Admin item management routes
 router.post('/', verifyToken, verifyAdmin, upload.single('image'), addMenuItem);

@@ -9,7 +9,7 @@ import { verifyAdmin, optionalAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Public item reviews
+// Public item reviews; GET accepts ?page=N&limit=N (default page 1, 5 reviews)
 router.get('/item/:itemId', getItemReviews);
 
 // Add review (optional JWT: records user_id if logged in, allows guest reviews too)

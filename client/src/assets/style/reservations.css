@@ -511,27 +511,33 @@
 /* ── Walk-in Modal ── */
 .modal-backdrop {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
   padding: 1rem;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .walkin-modal-content {
+  box-sizing: border-box;
   background: #fff;
   border-radius: 16px;
-  max-width: 520px;
-  width: 100%;
-  padding: 2rem;
+  width: min(100%, 1040px);
+  max-width: 1040px;
+  margin: auto;
+  padding: clamp(1rem, 2.5vw, 2rem);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .walkin-modal-content h3 {
@@ -543,6 +549,13 @@
   padding-bottom: 0.5rem;
 }
 
+.admin-floor-panel { background: #fff; padding: 1.2rem; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+.walkin-table-selection .floor-map { margin-top: .5rem; }
+.walkin-table-selection .floor-plan-surface { min-width: 0; }
+.admin-floor-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.admin-floor-heading h3 { margin: 0 0 .25rem; color: #26392d; }
+.admin-floor-heading p { margin: 0; color: #777; font-size: .86rem; }
+
 @media (max-width: 900px) {
   .reservation-container { width: 100%; }
   .admin-res-toolbar { align-items: stretch; }
@@ -552,6 +565,8 @@
 @media (max-width: 600px) {
   .reservation-page { padding: 1.25rem .75rem 3rem; }
   .reservation-card { padding: 1.25rem; }
+  .modal-backdrop { padding: .5rem; }
+  .walkin-modal-content { border-radius: 12px; }
   .admin-res-toolbar { padding: 1rem; }
   .admin-res-filters { width: 100%; align-items: stretch; }
   .admin-filter-item { flex-wrap: wrap; }
@@ -581,12 +596,28 @@
 .reservation-confirmation-details p { margin: 0 0 .5rem; }
 .reservation-confirmation-details .reservation-confirmation-status { margin: 0; }
 .reservation-confirmation-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 1rem; }
+.res-book-another-btn {
+  min-height: 46px;
+  padding: .75rem 1.35rem;
+  border: 0;
+  border-radius: 9px;
+  background: #287d3c;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(40, 125, 60, .2);
+  transition: background-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.res-book-another-btn:hover { background: #1f6831; transform: translateY(-1px); box-shadow: 0 6px 14px rgba(40, 125, 60, .25); }
+.res-book-another-btn:focus-visible { outline: 3px solid rgba(40, 125, 60, .3); outline-offset: 3px; }
 .reservation-profile-link { margin-top: 0; }
 .reservation-slots-loading { padding: 1rem 0; color: #777; }
 
 .modal-btn-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: stretch;
   gap: 0.75rem;
   margin-top: 1.5rem;
 }
+.modal-btn-row > button { flex: 1 1 0; min-width: 0; min-height: 44px; }
