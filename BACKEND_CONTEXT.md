@@ -20,7 +20,7 @@ This guide is a backend-oriented companion to `PROJECT_CONTEXT.md`. It records t
 2. `cors()`
 3. `express.json({ limit: '10mb' })`
 4. `express.urlencoded({ extended: true })`
-5. Rate limit mounted at `/api/`: 300 requests per IP per 15 minutes, with standard headers enabled.
+5. Rate limit mounted at `/api/`: default 1,200 requests per IP per 15 minutes, configurable with `API_RATE_LIMIT_MAX`, with standard headers enabled and JSON `{ error }` responses on 429.
 6. Static files: `/assets` → `client/public/assets`; `/uploads` → `client/public/uploads`.
 7. Feature routers mounted beneath `/api`.
 8. Global Express error handler returning JSON `{ error: ... }`.
@@ -69,8 +69,10 @@ All endpoints below include the `/api` prefix.
 | Orders | `POST /orders` | Currently public (no auth middleware on route); optional item `table_id` is validated and persisted for dine-in linking; delivery orders are atomically assigned an available driver or return 409 |
 | Orders | `GET /orders?page=N&limit=10`, `PUT /orders/:id`, `DELETE /orders/:id` | Admin required; list is paginated by distinct order group |
 | Orders | `GET /orders/user`, `GET /orders/status/:orderId` | JWT required; defined before wildcard routes; grouped results include a derived stage |
-| Orders | `PUT /orders/:orderId/failure-read` | Admin required; marks a failed delivery notification as read |
-| Orders | `GET /orders/driver/assigned`, `PUT /orders/driver/:orderId/status` | Driver role required; list own active deliveries and update delivery status |
+| Orders | `PUT /orders/:orderId/failure-read`, `PUT /orders/:orderId/picked-up` | Admin required; marks a failed delivery notification read or confirms an accepted, kitchen-ready driver's pickup |
+| Orders driver | `POST /orders/driver/:orderId/delivery-otp` | `verifyDriver`; generates/regenerates a five-minute 4-digit code for the assigned driver after pickup |
+| Orders customer | `POST /orders/:orderId/verify-delivery-otp` | JWT required; owner-scoped verification completes delivery |
+| Orders | `GET /orders/driver/assigned`, `PUT /orders/driver/:orderId/status` | Driver role required; list own active deliveries with address and stored destination coordinates and update delivery status |
 | Orders | `GET /orders/driver/analytics` | Driver role required; completed delivery counts and fee/tip earnings summaries |
 | Kitchen display | `GET /kds/orders?type=...`, `GET /kds/history` | Kitchen role required; active tickets (optionally filtered by order type) and recent ready/completed history |
 | Kitchen delivered history | `GET /kds/delivered?page=N` | Kitchen role required; chronological delivered-order pages, fixed at 20 order groups per page |
@@ -110,9 +112,13 @@ Most controllers combine request handling, validation/business rules, SQL, and r
 
 ### Customer order status contract
 
-`orderController.js` computes (does not persist) customer-facing order stages. For non-delivery orders, completion and kitchen status (`preparing`/`ready`) take precedence, followed by an age-based fallback (`placed`, `preparing`, `ready`). Delivery stages follow the driver workflow: accepted orders are `out_for_delivery`, delivered orders are `completed`, and failed orders are `delivery_failed`; otherwise the stage uses kitchen status/age. `POST /api/orders` locks available driver rows and assigns a free driver during the order transaction; it returns 409 and rolls back the order if no driver is available. There is no admin manual assignment endpoint. Drivers accept, mark delivered, or submit a required failure tag (`Customer not available`, `Missing/destroyed one or more item`, `Wrong order`) and optional descriptive `details` (up to 2000 characters). Both values are saved to `orders.delivery_failure_reason` and `orders.delivery_failure_details`; non-failure status updates clear them. The admin cannot directly change delivery status through the ordinary order update endpoint. Kitchen status remains distinct from driver delivery status.
+`orderController.js` derives customer-facing order stages. For delivery, kitchen `preparing`/`ready` status drives the early stages; driver acceptance alone remains at the kitchen stage. Admin-only `PUT /api/orders/:orderId/picked-up` locks the order and requires delivery type, `kitchen_status = 'ready'`, and `delivery_status = 'accepted'`, then sets `picked_up`. This yields customer-facing `out_for_delivery`. The assigned driver calls `POST /api/orders/driver/:orderId/delivery-otp` after pickup or while awaiting confirmation to generate/regenerate an OTP. The server uses a cryptographically random four-digit code, stores only its HMAC-SHA-256 digest using `DELIVERY_OTP_SECRET` (falling back to `JWT_SECRET`), expires it after five minutes, and returns plaintext only to the authenticated assigned driver. `POST /api/orders/:orderId/verify-delivery-otp` requires JWT ownership and `{ otp: "1234" }`; a valid, unexpired code marks the order delivered. Incorrect attempts are limited to five, and the fifth invalidates the code. Driver `PUT /api/orders/driver/:orderId/status` retains `{ status, reason?, details? }`: `accepted` is allowed only from `assigned`; `failed` is allowed only after pickup and clears any active OTP. Drivers cannot directly set `delivered`. Failure requires one of `Customer not available`, `Missing/destroyed one or more item`, or `Wrong order`, plus optional `details` up to 2000 characters. The ordinary admin order update endpoint cannot change delivery state. Kitchen status remains distinct from delivery status.
 
-`GET /api/orders/status/:orderId` returns `order_id`, `order_type`, `completed`, `coordinates`, `address`, optional `table_id`/`table_number`/`table_zone`, delivery status/driver fields, `stage`, `created_at`, and `items` (item IDs, titles, and completion flags). `GET /api/orders/user` groups line items by `order_id`, includes table and driver identity/status fields when assigned, and adds `stage`; the global delivery notice relies on that field. Keep both response forms aligned with `OrderTracker.jsx` and `GlobalDeliveryNotification.jsx`.
+`GET /api/orders/status/:orderId` returns `order_id`, `order_type`, `completed`, `coordinates`, `address`, optional `table_id`/`table_number`/`table_zone`, delivery status/driver fields, `stage`, `created_at`, and `items` (item IDs, titles, and completion flags). During OTP verification the stage is `awaiting_delivery_otp`; status payloads never contain the OTP or hash. `GET /api/orders/user` groups line items by `order_id`, includes table and driver identity/status fields when assigned, and adds `stage`; the global delivery notice relies on that field. Keep both response forms aligned with `OrderTracker.jsx` and `GlobalDeliveryNotification.jsx`.
+
+The API continues to return `stage: 'delivery_failed'` when a delivery fails. In `OrderTracker.jsx`, that existing stage replaces the final Delivered step with a red X Delivery Failed node; the normal successful path keeps its connected Delivered step. This is client presentation logic and does not alter the endpoint payload or status values.
+
+`GET /api/orders/driver/assigned` remains protected by `verifyDriver` and returns active assigned/accepted/picked_up/awaiting_otp order groups. Each group includes `order_id`, `order_type`, `address`, `coordinates` (stored `"latitude,longitude"` string), `delivery_status`, `delivery_failure_reason`, `delivery_otp_expires_at` (never the OTP/hash), `created_at`, `customer_name`, and `items` (`title`, `quantity`, `notes`). The driver dashboard uses the existing destination fields to calculate and display a Google Maps Routes driving overview; this adds no GPS tracking.
 
 `GET /api/orders?page=N&limit=10` returns `{ orders, pagination: { page, limit, total, totalPages, hasMore }, unreadFailureCount }`. It first pages distinct `order_id` groups, then fetches all line-item rows for those IDs so one order is never split across pages. Each row retains `delivery_failure_read_at`, `delivery_failure_reason`, and `delivery_failure_details`; `unreadFailureCount` counts distinct failed unread groups across all pages. Failed deliveries start unread because the driver workflow clears the read timestamp. Opening a failed order sends admin-only `PUT /api/orders/:orderId/failure-read`, which timestamps all failed rows in the group; the admin UI polls page 1 and lazily appends subsequent groups while displaying unread counts, the selected failure tag, and the driver's optional note in expanded details. This pagination change does not require a schema migration.
 
@@ -151,7 +157,7 @@ The JWT secret uses `JWT_SECRET` with a hard-coded fallback in current code. For
 
 ## Database operations and schema
 
-`server/config/db.js` creates a MySQL pool using `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` (defaults include `localhost`, `root`, and `freshbite_db`). Pool settings include a connection limit of 10 and a startup connectivity check.
+`server/config/db.js` creates a MySQL pool using `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` (defaults include `localhost`, `root`, and `freshbite_db`). Defaults are 20 active connections, a bounded queue of 100 waiting requests, and a 10-second connection timeout; deployments can tune these with `DB_CONNECTION_LIMIT`, `DB_QUEUE_LIMIT`, and `DB_CONNECT_TIMEOUT_MS`. Startup performs a connectivity check and releases its connection.
 
 Schema source and migration locations:
 
@@ -159,17 +165,19 @@ Schema source and migration locations:
 - Reservation tables and FK: `server/migrations/20261013_table_reservations.sql`
 - Order-to-table FK: `server/migrations/20261014_order_table_assignment.sql`
 - Driver delivery workflow: `server/migrations/20261022_driver_delivery_workflows.sql`
+- Admin pickup confirmation state: `server/migrations/20261028_admin_delivery_pickup.sql`
+- Delivery OTP verification fields/state: `server/migrations/20261029_delivery_otp_verification.sql`
 - Delivery fee/tip columns: `server/migrations/20261023_delivery_fees_tips.sql`
 - Kitchen roles, KDS ticket fields, and menu availability: `server/migrations/20261025_kitchen_kds.sql`
 - Admin unread delivery-failure tracking: `server/migrations/20261026_delivery_failure_read_tracking.sql`
 - Driver failure text details: `server/migrations/20261027_delivery_failure_details.sql`
 - Incremental promotion/rush changes: `server/migrations/phase4_promotions_advertising.sql`, `phase4_promotions_rush.sql`, `phase4_promo_advertising_state.sql`, and `phase4_promo_visuals.sql`.
 
-Feature tables visible in the schema/controllers include users, menu items, ratings, orders, `tables`, reservations, promotions, order-promotion redemptions, announcements, and `app_settings`. `reservations.table_id` and `orders.table_id` reference `tables.id`; numeric IDs disambiguate repeated table numbers across zones. Existing databases need the reservation, order-table, driver-delivery, fee/tip, kitchen, failure-read, and failure-details migrations applied in date order. The base schema includes equivalent fields for fresh setup. The driver migration adds the `driver` role and `orders.driver_id`, `delivery_status`, and `delivery_failure_reason`; the fee/tip migration adds `orders.delivery_fee` and `orders.tip_amount`; the kitchen migration adds the `kitchen` role, `menu_items.is_available`, `orders.kitchen_status`, `orders.is_cooked`, and a kitchen lookup index; the 20261026 migration adds `orders.delivery_failure_read_at`; the 20261027 migration adds `orders.delivery_failure_details`. Controllers use parameter placeholders for SQL values. When editing DB behavior, update schema/migrations and controller queries as one change; review foreign keys and migration order before applying schema changes.
+Feature tables visible in the schema/controllers include users, menu items, ratings, orders, `tables`, reservations, promotions, order-promotion redemptions, announcements, and `app_settings`. `reservations.table_id` and `orders.table_id` reference `tables.id`; numeric IDs disambiguate repeated table numbers across zones. Existing databases need the reservation, order-table, driver-delivery, fee/tip, kitchen, failure-read, failure-details, admin-pickup, and delivery-OTP migrations applied in date order. The base schema includes equivalent fields for fresh setup. The driver migration adds the `driver` role and order driver workflow fields; the fee/tip migration adds delivery fees and tips; the kitchen migration adds the `kitchen` role, menu availability and kitchen status fields; later migrations add failure read/details, `picked_up`, and OTP fields/status. Controllers use parameter placeholders for SQL values. When editing DB behavior, update schema/migrations and controller queries as one change; review foreign keys and migration order before applying schema changes.
 
 ## Predictable JSON and error handling
 
-The global handler in `server/server.js` returns `err.status || 500` with `{ error: err.message || 'Internal Server Error' }`. Controllers generally catch their own SQL errors and return status 500 with `{ error: error.message }`; validation failures use 4xx statuses in several handlers. Multer errors reach the global handler.
+The API rate limiter defaults to 1,200 requests per IP per 15-minute window and can be tuned with `API_RATE_LIMIT_MAX`; its 429 handler returns JSON `{ error }` rather than express-rate-limit's default plain-text response. Unknown `/api` paths and request parser errors also use the JSON error contract. The final handler in `server/server.js` preserves valid 4xx statuses and returns a generic 500 message for server errors. Transactional route handlers with dedicated pool connections use `asyncHandler` so acquisition/cleanup rejections reach this final handler rather than becoming unhandled Express 4 promises. The bounded pool queue returns pressure to the caller instead of accumulating unlimited waiters.
 
 For new endpoints, use a consistent status/payload pattern:
 
@@ -185,7 +193,7 @@ Avoid returning raw HTML or plain text from an API endpoint. Keep details useful
 
 `server/.env` is present locally. Environment keys used by source include:
 
-- Server/database/auth: `PORT`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`.
+- Server/database/auth: `PORT`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`, `DELIVERY_OTP_SECRET`, `API_RATE_LIMIT_MAX`, `DB_CONNECTION_LIMIT`, `DB_QUEUE_LIMIT`, `DB_CONNECT_TIMEOUT_MS`.
 - Contact email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`.
 - Mailtrap inbox: `MAILTRAP_ACCOUNT_ID`, `MAILTRAP_INBOX_ID`, `MAILTRAP_API_TOKEN`.
 
@@ -194,7 +202,7 @@ This list names keys only. Never expose local values in docs, responses, commits
 ## Frontend integration points to inspect before server changes
 
 - `client/src/pages/Menu.jsx`: menu, rush, promotion validation, recommendations, dine-in seating prompt, table reservation, and order payloads.
-- `client/src/pages/AdminMenu.jsx` and `client/src/components/AdminEmployees.jsx`: menu/order admin behavior and employee management UI. Employee routes are admin-only, and passwords are never returned; the form supports password reset.
+- `client/src/pages/AdminMenu.jsx` and `client/src/components/AdminEmployees.jsx`: menu/order admin behavior and employee management UI; the admin overview Orders metric card specifically calculates active pending deliveries from loaded order groups, excluding terminal completed/delivered and delivery_failed orders. Employee routes are admin-only, and passwords are never returned; the form supports password reset.
 - `client/src/pages/KitchenDashboard.jsx`: KDS API caller for kitchen users; admins see an Add New Employee navigation card linking to the admin employee management view.
 - `client/src/components/AdminPromotions.jsx`: promotion JSON/form fields and image uploads.
 - `client/src/pages/Reservations.jsx`, `client/src/components/AdminReservations.jsx`, `client/src/components/ReservationFloorMap.jsx`: table availability, reservation payloads, shared floor map, and admin filters/status changes.

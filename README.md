@@ -9,8 +9,8 @@ FreshBite is a full-stack restaurant and cafe web application that supports onli
 - **Customer Experience:** Browse menu items, apply promotions, track orders in real time, place dine-in table reservations, rate items, and submit contact or order-issue reports.
 - **Role-Based Access:** Dedicated dashboards for Customers, Admins, Delivery Drivers, and Kitchen Staff.
 - **Kitchen Display System (KDS):** Real-time order management for kitchen staff, supporting order bumping, availability toggles, and paginated delivered history.
-- **Driver Delivery Workflow:** Automatic driver assignment on checkout, status updates (`out_for_delivery`, `completed`, `delivery_failed`), and detailed driver earnings/analytics.
-- **Admin Management Panel:** Comprehensive tools for menu item CRUD, promotional announcements, employee management (drivers & kitchen staff), user segmentation (CRM), and review moderation.
+- **Driver Delivery Workflow:** Automatic driver assignment, kitchen preparation, admin-confirmed pickup, and customer-confirmed delivery using a driver-generated four-digit OTP. Codes expire after five minutes and can be regenerated; only a verified code completes delivery. Assigned deliveries include a Google Maps route overview and driver earnings analytics.
+- **Admin Management Panel:** Comprehensive tools for menu item CRUD, promotional announcements, employee management (drivers & kitchen staff), user segmentation (CRM), review moderation, and dashboard tracking of active pending deliveries.
 - **Interactive Seating Map:** Shared, visual table availability and floor layout (Patio, Indoor, Bar) for customers and admins.
 
 ---
@@ -85,6 +85,12 @@ DB_PASSWORD=your_password
 DB_NAME=freshbite_db
 JWT_SECRET=your_jwt_secret
 
+# Optional capacity settings (defaults shown)
+API_RATE_LIMIT_MAX=1200
+DB_CONNECTION_LIMIT=20
+DB_QUEUE_LIMIT=100
+DB_CONNECT_TIMEOUT_MS=10000
+
 # Optional: Email / Mailtrap Configuration
 SMTP_HOST=smtp.mailtrap.io
 SMTP_PORT=2525
@@ -96,6 +102,8 @@ MAILTRAP_API_TOKEN=your_api_token
 ```
 
 To configure Google Maps on the frontend, set `VITE_GOOGLE_MAPS_API_KEY` in `client/.env`.
+
+The API limit applies per client IP over a 15-minute window. Rate-limit responses use JSON `{ "error": "..." }`; database pool capacity and waiting-queue defaults can be adjusted for the MySQL server's available resources.
 
 ---
 

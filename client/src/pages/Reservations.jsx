@@ -204,7 +204,7 @@ export default function Reservations() {
 
         {confirmedBooking ? (
           <div className="reservation-card reservation-confirmation">
-            <div className="reservation-confirmation-icon">🎉</div>
+            <div className="reservation-confirmation-icon"></div>
             <h2 className="reservation-confirmation-title">Reservation Confirmed!</h2>
             <p className="reservation-confirmation-intro">
               We look forward to welcoming you, <strong>{confirmedBooking.guest_name}</strong>!

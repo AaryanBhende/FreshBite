@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { AuthContext } from '../context/AuthContext';
+import { readJsonResponse } from '../utils/readJsonResponse';
 
 export default function AuthModal({ isOpen, onClose }) {
   const [isRegister, setIsRegister] = useState(false);
@@ -41,7 +42,7 @@ export default function AuthModal({ isOpen, onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Authentication failed');
       }
@@ -59,7 +60,7 @@ export default function AuthModal({ isOpen, onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: credentialResponse.credential }),
       });
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Google login failed');
       }

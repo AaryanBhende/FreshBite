@@ -9,8 +9,9 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'freshbite_db',
   waitForConnections: true,
-  connectionLimit: 10,  // Reuses up to 10 simultaneous connections
-  queueLimit: 0,        // Unlimited queued connection requests
+  connectionLimit: Number.parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 20,
+  queueLimit: Number.parseInt(process.env.DB_QUEUE_LIMIT, 10) || 100,
+  connectTimeout: Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS, 10) || 10000,
   enableKeepAlive: true, // Keeps TCP connection alive to prevent timeouts
   keepAliveInitialDelay: 0,
 });

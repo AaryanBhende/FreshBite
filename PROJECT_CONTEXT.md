@@ -85,6 +85,7 @@ There is no explicit catch-all route in the current `App.jsx`.
 - Admin read-message IDs use `admin_read_msg_ids` in local storage.
 - Delivery trip timing/arrival state uses `freshbite_delivery_trip_<orderId>` in local storage.
 - Most API calls use the browser `fetch` API directly from pages/components. There is no centralized API client layer visible in the source.
+- Polling and authentication views use `utils/readJsonResponse.js` to tolerate empty, malformed, or non-JSON failure bodies; server errors are read from `{ error }` when available, so a rate-limit response cannot itself trigger a JSON parsing exception.
 - Protected calls generally attach `Authorization: Bearer ${token}` from `AuthContext`.
 - Page-specific CSS is in `client/src/assets/style/`; global styles are in `App.css`.
 
@@ -98,12 +99,12 @@ There is no explicit catch-all route in the current `App.jsx`.
 - `components/AdminReservations.jsx`: date/hour floor map, reservation management, and scrollable walk-in modal with table-driven guest count.
 - `pages/Menu.jsx`: dine-in seating prompt; customers can link an existing table or pick and reserve a live-available table before placing the order.
 - `pages/Profile.jsx`: user profile updates and order/reservation history.
-- `pages/OrderTracker.jsx`: polls authenticated order status every 5 seconds, renders delivery route/trip UI, and sends tagged customer issue reports through the authenticated contact endpoint.
-- `pages/DriverDashboard.jsx`: polls automatically assigned deliveries, supports delivery outcomes with fixed failure reason tags, and displays driver earnings analytics.
+- `pages/OrderTracker.jsx`: polls authenticated order status every 5 seconds, renders delivery route/trip UI, a connected successful-delivery stepper, and customer OTP verification during `awaiting_delivery_otp`. For `delivery_failed`, the final Delivered position is replaced with a red X failure node. The page also sends tagged customer issue reports through the authenticated contact endpoint.
+- `pages/DriverDashboard.jsx`: polls assigned deliveries, accepts orders, generates/displays five-minute 4-digit delivery OTPs, supports OTP regeneration and failure reports, and displays driver earnings analytics with a Google Maps Routes driving overview.
 - `pages/KitchenDashboard.jsx`: kitchen-role dashboard for active tickets, horizontal Active Orders/Recall queues, dine-in item bumping, and menu availability; admins see an Add New Employee card at `/kitchen` that navigates to `/admin/management?view=employees`.
 - `pages/KitchenHistory.jsx`: displays delivered orders chronologically, 20 orders per page.
 - `components/GlobalDeliveryNotification.jsx` and `utils/deliveryTrip.js`: monitor delivery orders and persist simulated trip/arrival-notice state across pages and tabs.
-- `pages/AdminMenu.jsx`: admin dashboard composition and menu/order/rush/contact-message management. Order Management fetches 10 order groups per page, appends groups on scroll, and refreshes the first page every 10 seconds while retaining loaded older groups; each group is paged whole with its line items, unread failure state, driver, and address.
+- `pages/AdminMenu.jsx`: admin dashboard composition and menu/order/rush/contact-message management. The overview Orders summary card specifically displays the count of active pending deliveries (orders in active/pending fulfillment stages, excluding terminal completed/delivered and delivery_failed orders). Order Management fetches 10 order groups per page, appends groups on scroll, and refreshes the first page every 10 seconds while retaining loaded older groups; each group is paged whole with its line items, unread failure state, driver, and address.
 - `components/AdminReviews.jsx`: paginated admin review listing/moderation; search and status filters apply server-side, and an IntersectionObserver appends 10 matching reviews at a time.
 - `components/AdminEmployees.jsx`: admin-only driver/kitchen employee listing, create/edit/delete, and password reset.
 - `components/ProductCard.jsx`: product display and ratings/review interaction; expanded cards fetch five customer reviews per page and use an IntersectionObserver in the review scroller to append more.
@@ -127,10 +128,10 @@ The Vite proxy is development-only. Check the deployment setup separately before
 
 1. Compression.
 2. CORS, JSON parsing (10 MB limit), and URL-encoded parsing.
-3. A rate limiter for `/api/` (300 requests per IP per 15-minute window).
+3. A rate limiter for `/api/` (default 1,200 requests per IP per 15-minute window, configurable with `API_RATE_LIMIT_MAX`) with a JSON `{ error }` 429 response.
 4. Static `/assets` and `/uploads` serving.
 5. Feature routers mounted under `/api/...`.
-6. A final JSON error handler.
+6. A JSON 404 handler for unknown API paths and a final JSON error handler (including request-body parser errors).
 
 Controllers typically validate/read `req` values, run parameterized SQL using the shared pool in `config/db.js`, and return JSON. Error handling is mostly local `try/catch` blocks returning status 500 and `{ error }`.
 
@@ -151,8 +152,9 @@ All paths below are prefixed by `/api` in `server/server.js`.
 | Orders | `POST /orders` | Order creation; route currently has no auth middleware; delivery orders are assigned an available driver in the creation transaction or fail with 409 if none is available |
 | Orders admin | `GET /orders?page=N&limit=10`, `PUT /orders/:id`, `DELETE /orders/:id` | Admin-only management; listing returns `{ orders, pagination, unreadFailureCount }` and pages whole order groups |
 | Orders customer | `GET /orders/user`, `GET /orders/status/:orderId` | JWT-authenticated history/status |
-| Orders admin | `PUT /orders/:orderId/failure-read` | Admin marks a failed delivery notification read |
-| Orders driver | `GET /orders/driver/assigned`, `PUT /orders/driver/:orderId/status`, `GET /orders/driver/analytics` | Driver-only delivery and earnings workflow |
+| Orders admin | `PUT /orders/:orderId/failure-read`, `PUT /orders/:orderId/picked-up` | Admin reads failed delivery notices or confirms an accepted, kitchen-ready driver pickup |
+| Orders driver | `GET /orders/driver/assigned`, `POST /orders/driver/:orderId/delivery-otp`, `PUT /orders/driver/:orderId/status`, `GET /orders/driver/analytics` | Driver-only assignment, acceptance, OTP generation, failure reporting, and earnings workflow |
+| Orders customer | `POST /orders/:orderId/verify-delivery-otp` | JWT-authenticated order owner verifies the driver's 4-digit code to complete delivery |
 | Kitchen display | `GET /kds/orders`, `GET /kds/history`, `PUT /kds/orders/:id/status`, `PUT /kds/orders/items/:itemId/bump` | Kitchen-role ticket and item workflow |
 | Kitchen delivered history | `GET /kds/delivered?page=N` | Kitchen role required; chronological pages of 20 delivered order groups |
 | Tables | `GET /tables`, `GET /tables/availability?date=YYYY-MM-DD&time_slot=HH:00` | Public table layout/capacity and status for one-hour blocks |
@@ -174,7 +176,7 @@ All paths below are prefixed by `/api` in `server/server.js`.
 
 Implementation details and exact payload shapes belong in the relevant route/controller file; this table is a navigation aid, not a formal API specification.
 
-Order history/status include customer-facing stages derived by `orderController.js`. Kitchen status (`pending`, `preparing`, `ready`) drives order preparation stages; delivery orders then follow driver assignment and status (`assigned`, `accepted`, `delivered`, `failed`). The client animates a simulated trip after driver acceptance; the animation and arrival notice are browser-local, not GPS/server location tracking. `delivery_failed` is an additional customer-visible stage.
+Order history/status include customer-facing stages derived by `orderController.js`. Kitchen status (`pending`, `preparing`, `ready`) drives preparation stages. For delivery, a driver accepts (`accepted`), the admin confirms pickup (`picked_up`) after the kitchen marks ready, then the driver generates an OTP. The assigned driver receives the plaintext OTP; the customer must verify it before the server sets `delivered`. OTPs are hash-stored, expire after five minutes, and can be regenerated; driver failure reporting clears any active OTP. Only `picked_up` maps to customer-facing `out_for_delivery`; `awaiting_otp` maps to `awaiting_delivery_otp`. The simulated trip and arrival notice are browser-local, not GPS/server location tracking. `delivery_failed` is a customer-visible terminal stage.
 
 Delivery creation locks driver records and automatically assigns the first available driver in the same transaction; checkout receives HTTP 409 when all drivers are busy. Drivers report failed deliveries with one of three tags, and admins see an unread failure count until they open the failed order; the selected tag is shown in its expanded details. Customers can report an order issue from `/track/:orderId` using the tags `Order not delivered`, `Missing/destroyed one or more item`, or `Wrong order`; the authenticated endpoint verifies order ownership and sends a red-accented email through the existing contact mail transport.
 
@@ -194,7 +196,7 @@ The JWT secret comes from `JWT_SECRET` with a development fallback defined in th
 
 ## Database and persistence
 
-`server/config/db.js` creates a MySQL connection pool. Configuration comes from `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`; defaults include localhost, root, and `freshbite_db`. The pool checks connectivity during startup and logs a connection error if unavailable.
+`server/config/db.js` creates a MySQL connection pool. Configuration comes from `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`; defaults include localhost, root, and `freshbite_db`. Pool capacity defaults to 20 connections and a queue of 100, with a 10-second connection timeout; `DB_CONNECTION_LIMIT`, `DB_QUEUE_LIMIT`, and `DB_CONNECT_TIMEOUT_MS` tune these values. The pool checks connectivity during startup and logs a connection error if unavailable.
 
 `server/schema.sql` is the schema/seed source. Main feature data includes:
 
@@ -209,7 +211,7 @@ The JWT secret comes from `JWT_SECRET` with a development fallback defined in th
 
 Promotion/rush related incremental SQL is under `server/migrations/`. Review the full schema and relevant migrations before changing table fields or writing queries; the SQL controllers rely on those names and relationships.
 
-Reservation and dine-in table assignment use `tables` and `reservations.table_id`; `orders.table_id` links dine-in order line items to a table. Existing databases need `20261013_table_reservations.sql`, `20261014_order_table_assignment.sql`, `20261022_driver_delivery_workflows.sql`, `20261023_delivery_fees_tips.sql`, `20261025_kitchen_kds.sql`, `20261026_delivery_failure_read_tracking.sql`, and `20261027_delivery_failure_details.sql` applied in date order. The base `server/schema.sql` includes the table, driver, fee/tip, kitchen, failure-read, and failure-details fields for fresh setup. Table numbers repeat across zones, so use numeric `table_id` for relationships and `zone`/`table_number` for display. Reservation slots are one-hour blocks; `Seated` reservations appear as Occupied on the table map, while Pending/Confirmed reservations appear as Booked. Orders also track driver assignment/outcomes and kitchen status/item cooked state; menu items include `is_available` for sold-out controls.
+Reservation and dine-in table assignment use `tables` and `reservations.table_id`; `orders.table_id` links dine-in order line items to a table. Existing databases need migrations through `20261029_delivery_otp_verification.sql` applied in date order. The base schema includes the OTP hash, expiry, attempt counter, and `awaiting_otp` state for fresh setup. Table numbers repeat across zones, so use numeric `table_id` for relationships and `zone`/`table_number` for display. Reservation slots are one-hour blocks; `Seated` reservations appear as Occupied on the table map, while Pending/Confirmed reservations appear as Booked. Orders also track driver assignment/outcomes, customer OTP verification, and kitchen status/item cooked state; menu items include `is_available` for sold-out controls.
 
 ## Upload and static image flow
 

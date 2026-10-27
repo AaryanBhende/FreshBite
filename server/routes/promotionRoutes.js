@@ -9,6 +9,7 @@ import {
   setPromotionActive, getAnnouncements,
 } from '../controllers/promotionController.js';
 import { optionalAuth, verifyAdmin } from '../middleware/authMiddleware.js';
+import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,9 +32,9 @@ const upload = multer({
 
 router.post('/validate', optionalAuth, validatePromotion);
 router.get('/admin', verifyAdmin, getPromotions);
-router.post('/admin', verifyAdmin, upload.single('image'), createPromotion);
-router.put('/admin/:id', verifyAdmin, upload.single('image'), updatePromotion);
-router.delete('/admin/:id', verifyAdmin, deletePromotion);
-router.put('/admin/:id/active', verifyAdmin, setPromotionActive);
+router.post('/admin', verifyAdmin, upload.single('image'), asyncHandler(createPromotion));
+router.put('/admin/:id', verifyAdmin, upload.single('image'), asyncHandler(updatePromotion));
+router.delete('/admin/:id', verifyAdmin, asyncHandler(deletePromotion));
+router.put('/admin/:id/active', verifyAdmin, asyncHandler(setPromotionActive));
 router.get('/announcements', getAnnouncements);
 export default router;

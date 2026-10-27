@@ -1,5 +1,8 @@
 import React, { useContext, useEffect, useState } from 'react';
+import { GoogleMap, Marker, OverlayView, Polyline, useLoadScript } from '@react-google-maps/api';
 import { AuthContext } from '../context/AuthContext';
+import { readJsonResponse } from '../utils/readJsonResponse';
+import '../assets/style/profile.css';
 
 const FAILURE_REASONS = [
   'Customer not available',
@@ -7,11 +10,69 @@ const FAILURE_REASONS = [
   'Wrong order',
 ];
 
+const CAFE_LOCATION = { lat: 15.48, lng: 73.808 };
+
+function DriverDeliveryRoute({ coordinates, address }) {
+  const { isLoaded, loadError } = useLoadScript({ googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY });
+  const [map, setMap] = useState(null);
+  const [route, setRoute] = useState(null);
+  const [error, setError] = useState('');
+  const origin = CAFE_LOCATION;
+  const destination = typeof coordinates === 'string' ? coordinates.split(',').map(Number) : [];
+  const valid = destination.length === 2 && Number.isFinite(destination[0]) && Number.isFinite(destination[1]) && Math.abs(destination[0]) <= 90 && Math.abs(destination[1]) <= 180;
+
+  useEffect(() => {
+    if (!isLoaded || !map || !valid) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { Route } = await window.google.maps.importLibrary('routes');
+        const result = await Route.computeRoutes({
+          origin: CAFE_LOCATION,
+          destination: { lat: destination[0], lng: destination[1] },
+          travelMode: 'DRIVING',
+          fields: ['path', 'viewport', 'distanceMeters', 'durationMillis'],
+        });
+        const data = result.routes?.[0];
+        if (!data?.path?.length) throw new Error('No driving route returned.');
+        if (cancelled) return;
+        setRoute(data);
+        setError('');
+        const bounds = new window.google.maps.LatLngBounds();
+        data.path.forEach(point => bounds.extend(point));
+        map.fitBounds(bounds, 36);
+      } catch {
+        if (!cancelled) setError('A road route could not be calculated for this delivery location.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoaded, map, coordinates, valid]);
+
+  if (!valid) return <p className="driver-route-message">Route coordinates are not available for this delivery.</p>;
+  if (loadError) return <p className="driver-route-message">Google Maps could not be loaded.</p>;
+  if (!isLoaded) return <div className="driver-route-map driver-route-loading" role="status">Loading delivery route…</div>;
+  return <div className="driver-route-panel">
+    <GoogleMap mapContainerClassName="driver-route-map" center={CAFE_LOCATION} zoom={13} options={{ scrollwheel: false, streetViewControl: false, mapTypeControl: false }} onLoad={setMap}>
+      {route && <Polyline path={route.path} options={{ strokeColor: '#2e7d32', strokeOpacity: .88, strokeWeight: 5 }} />}
+      <OverlayView position={origin} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+        <div className="tracker-cafe-icon" title="FreshBite Cafe · Miramar, Panaji" aria-label="FreshBite Cafe">☕</div>
+      </OverlayView>
+      <Marker position={{ lat: destination[0], lng: destination[1] }} title={address || 'Delivery destination'} />
+    </GoogleMap>
+    <div className="driver-route-summary"><strong>FreshBite Cafe → Delivery address</strong>
+      {route && <span>{(route.distanceMeters / 1000).toFixed(1)} km · {Math.max(1, Math.round(route.durationMillis / 60000))} min driving</span>}
+      {error && <span role="status">{error}</span>}
+    </div>
+  </div>;
+}
+
 export default function DriverDashboard() {
   const { token, user, logout } = useContext(AuthContext);
   const [orders, setOrders] = useState([]);
   const [reasons, setReasons] = useState({});
   const [failureDetails, setFailureDetails] = useState({});
+  const [deliveryOtps, setDeliveryOtps] = useState({});
+  const [otpExpiries, setOtpExpiries] = useState({});
   const [message, setMessage] = useState('');
   const [activeView, setActiveView] = useState('deliveries');
   const [analytics, setAnalytics] = useState(null);
@@ -21,7 +82,9 @@ export default function DriverDashboard() {
   const load = async () => {
     try {
       const response = await fetch('/api/orders/driver/assigned', { headers: { Authorization: `Bearer ${token}` } });
-      if (response.ok) setOrders(await response.json());
+      const data = await readJsonResponse(response);
+      if (response.ok) setOrders(data);
+      else setMessage(data.error || 'Could not refresh assigned deliveries.');
     } catch { setMessage('Could not refresh assigned deliveries.'); }
   };
   useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, [token]);
@@ -31,7 +94,7 @@ export default function DriverDashboard() {
     setAnalyticsLoading(true); setAnalyticsError('');
     fetch('/api/orders/driver/analytics', { headers: { Authorization: `Bearer ${token}` } })
       .then(async response => {
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.error || 'Could not load earnings analytics.');
         if (!cancelled) setAnalytics(data);
       })
@@ -46,9 +109,25 @@ export default function DriverDashboard() {
         method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status, reason: reasons[orderId] || '', details: failureDetails[orderId] || '' }),
       });
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data.error || 'Could not update delivery.');
-      setMessage(data.message); await load();
+      setMessage(data.message);
+      if (status === 'failed') setDeliveryOtps(current => { const next = { ...current }; delete next[orderId]; return next; });
+      await load();
+    } catch (error) { setMessage(error.message); }
+  };
+  const generateDeliveryOtp = async (orderId) => {
+    setMessage('');
+    try {
+      const response = await fetch(`/api/orders/driver/${encodeURIComponent(orderId)}/delivery-otp`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data.error || 'Could not generate the delivery code.');
+      setDeliveryOtps(current => ({ ...current, [orderId]: data.otp }));
+      setOtpExpiries(current => ({ ...current, [orderId]: data.expires_at }));
+      setMessage(data.message);
+      await load();
     } catch (error) { setMessage(error.message); }
   };
   const chartRows = chartRange === 'daily' ? (analytics?.daily || []) : (analytics?.weekly || []);
@@ -93,16 +172,25 @@ export default function DriverDashboard() {
     <div className="driver-section-heading"><div><h2>Your deliveries</h2><p>New assignments appear here automatically.</p></div></div>
     {!orders.length ? <section className="driver-empty-state"><span aria-hidden="true">🛵</span><h3>You’re all caught up</h3><p>No deliveries are assigned right now. Keep this page open for new orders.</p></section> : <div className="driver-order-list">{orders.map(order => <article className="driver-order-card" key={order.order_id}>
       <header className="driver-order-card-heading"><div><span className="driver-order-label">DELIVERY ORDER</span><h3>#{order.order_id}</h3></div>
-        <span className={`driver-status-pill driver-status-pill--${order.delivery_status}`}>{order.delivery_status === 'assigned' ? 'Awaiting acceptance' : 'On the way'}</span>
+        <span className={`driver-status-pill driver-status-pill--${order.delivery_status}`}>{order.delivery_status === 'assigned' ? 'Awaiting acceptance' : order.delivery_status === 'accepted' ? 'Awaiting pickup confirmation' : order.delivery_status === 'awaiting_otp' ? 'Awaiting customer code' : 'Picked up · en route'}</span>
       </header>
       <div className="driver-order-facts">
         <div><span>Customer</span><strong>{order.customer_name || 'Guest'}</strong></div>
         <div><span>Delivery address</span><strong>{order.address || 'Address unavailable'}</strong></div>
       </div>
+      <section className="driver-route-section" aria-label={`Delivery route for order ${order.order_id}`}>
+        <h4>Delivery route</h4>
+        <DriverDeliveryRoute coordinates={order.coordinates} address={order.address} />
+      </section>
       <div className="driver-order-items"><h4>Order items</h4><ul>{order.items.map((item, index) => <li key={`${item.title}-${index}`}><span>{item.title}</span><strong>× {item.quantity}</strong>{item.notes && <small>{item.notes}</small>}</li>)}</ul></div>
-      {order.delivery_status === 'assigned' ? <div className="driver-order-actions"><p>Accept this delivery to start the customer’s live trip tracker.</p><button onClick={() => update(order.order_id, 'accepted')}>Accept delivery</button></div> : <>
-        <p className="driver-tracking-note"><span aria-hidden="true">●</span> Accepted · customer tracking is active</p>
-        <div className="driver-order-actions"><button onClick={() => update(order.order_id, 'delivered')}>Mark as delivered</button>
+      {order.delivery_status === 'assigned' ? <div className="driver-order-actions"><p>Accept this delivery assignment.</p><button onClick={() => update(order.order_id, 'accepted')}>Accept delivery</button></div> : order.delivery_status === 'accepted' ? <p className="driver-tracking-note">Delivery accepted · waiting for admin pickup confirmation.</p> : <>
+        <p className="driver-tracking-note"><span aria-hidden="true">●</span> Pickup confirmed · customer tracking is active</p>
+        <div className="driver-order-actions">{order.delivery_status === 'picked_up' ? <button onClick={() => generateDeliveryOtp(order.order_id)}>Mark as Delivered</button> : <div className="driver-delivery-otp">
+          <p>Share this four-digit code with the customer to confirm delivery.</p>
+          {deliveryOtps[order.order_id] ? <strong className="driver-delivery-otp-code" aria-label="Delivery verification code">{deliveryOtps[order.order_id]}</strong> : <p>The code is not available in this session. Generate a new one to continue.</p>}
+          {(otpExpiries[order.order_id] || order.delivery_otp_expires_at) && <small>Expires at {new Date(otpExpiries[order.order_id] || order.delivery_otp_expires_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}.</small>}
+          <button type="button" className="driver-otp-regenerate" onClick={() => generateDeliveryOtp(order.order_id)}>Regenerate OTP</button>
+        </div>}
           <div className="driver-failure-action"><label htmlFor={`reason-${order.order_id}`}>If delivery fails, select a reason</label>
             <select id={`reason-${order.order_id}`} value={reasons[order.order_id] || ''} onChange={e => setReasons({ ...reasons, [order.order_id]: e.target.value })}>
               <option value="">Choose a reason</option>

@@ -4,15 +4,23 @@
    ========================================================= */
 
 .reservation-page {
-  min-height: 100vh;
-  background: var(--color-bg, #f8f5f0);
-  padding: 2.5rem 1rem 5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2.5rem 1rem 5rem;
+    background-color: var(--color-bg, #f8f5f0);
+    box-sizing: border-box;
 }
 
 .reservation-container {
-  max-width: 900px;
-  margin: 0 auto;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    /* Pushes the container down by 5% of its own height */
+    transform: translateY(10%); 
 }
+
 
 .reservation-header {
   text-align: center;
@@ -577,11 +585,21 @@
   .admin-view-btn { flex: 1 1 0; min-width: 0; padding-inline: .5rem; }
   .calendar-day-header { align-items: flex-start; flex-direction: column; gap: .75rem; }
   .reservation-confirmation-details { padding: 1rem; }
-  .reservation-confirmation-actions { flex-direction: column; }
+  .reservation-confirmation-actions { flex-direction: column; align-items: stretch; }
 }
 
 .reservation-confirmation { text-align: center; }
-.reservation-confirmation-icon { margin-bottom: 1rem; font-size: 3rem; }
+.reservation-confirmation-icon {
+  width: 48px; /* Change to your preferred size */
+  height: 48px;
+  background-image: url('../icons/calendar-check.svg'); /* Path to your SVG icon */
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: inline-block; /* Ensures the width/height take effect if it's next to text */
+}
+
+
 .reservation-card h2.reservation-confirmation-title { margin-bottom: .5rem; padding-bottom: 0; border-bottom: 0; }
 .reservation-confirmation-intro { margin: 0 0 1.5rem; color: #555; font-size: 1.05rem; }
 .reservation-confirmation-details {
@@ -595,7 +613,25 @@
 }
 .reservation-confirmation-details p { margin: 0 0 .5rem; }
 .reservation-confirmation-details .reservation-confirmation-status { margin: 0; }
-.reservation-confirmation-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 1rem; }
+.reservation-confirmation-actions { display: flex; align-items: stretch; justify-content: center; flex-wrap: wrap; gap: 1rem; }
+.reservation-confirmation-actions .res-book-another-btn,
+.reservation-confirmation-actions .tracker-back-btn.reservation-profile-link {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 1 13rem;
+  align-items: center;
+  justify-content: center;
+  width: 13rem;
+  min-width: 0;
+  height: 48px;
+  margin: 0;
+  padding: 0 1rem;
+  border-radius: 9px;
+  font-size: .95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
 .res-book-another-btn {
   min-height: 46px;
   padding: .75rem 1.35rem;
@@ -621,3 +657,8 @@
   margin-top: 1.5rem;
 }
 .modal-btn-row > button { flex: 1 1 0; min-width: 0; min-height: 44px; }
+
+@media (max-width: 600px) {
+  .reservation-confirmation-actions .res-book-another-btn,
+  .reservation-confirmation-actions .tracker-back-btn.reservation-profile-link { flex: 0 0 auto; width: 100%; }
+}

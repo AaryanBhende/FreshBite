@@ -409,6 +409,17 @@
   margin-bottom: 1.8rem;
 }
 
+.tracker-delivery-otp { display: grid; gap: .65rem; margin-top: 1rem; padding: 1rem; border: 1px solid #dce9df; border-radius: 12px; background: #f6faf6; }
+.tracker-delivery-otp h4, .tracker-delivery-otp p { margin: 0; }
+.tracker-delivery-otp h4 { color: #214b30; }
+.tracker-delivery-otp p { color: #5f7064; font-size: .9rem; line-height: 1.45; }
+.tracker-delivery-otp label { color: #385743; font-size: .85rem; font-weight: 700; }
+.tracker-delivery-otp input { width: 9rem; padding: .65rem .75rem; border: 1px solid #bdcfc1; border-radius: 8px; font: inherit; font-size: 1.2rem; letter-spacing: .25em; }
+.tracker-delivery-otp button { width: fit-content; min-height: 42px; padding: .65rem 1rem; border: 0; border-radius: 8px; background: #236b3c; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.tracker-delivery-otp button:disabled { opacity: .55; cursor: not-allowed; }
+.tracker-otp-success { color: #27613a !important; }
+.tracker-otp-error { color: #a32e28 !important; }
+
 /* Stepper */
 .tracker-stepper {
   display: flex;
@@ -456,6 +467,12 @@
   box-shadow: 0 0 0 4px rgba(46,125,50,0.15);
   animation: pulse-step 1.5s ease-in-out infinite;
 }
+.step-circle.failed {
+  border-color: #c43d36;
+  background: #c43d36;
+  color: #fff;
+  font-weight: 800;
+}
 
 @keyframes pulse-step {
   0%, 100% { box-shadow: 0 0 0 4px rgba(46,125,50,0.15); }
@@ -485,6 +502,7 @@
   margin-bottom: 0.15rem;
 }
 .step-label.active { color: var(--color-primary, #2e7d32); }
+.step-label.failed { color: #a32e28; }
 .step-label.done   { color: #1a1a1a; }
 
 .step-description {
@@ -492,6 +510,7 @@
   color: #999;
 }
 .step-description.active { color: #555; }
+
 
 /* Last step – no bottom padding */
 .tracker-step:last-child .step-content {

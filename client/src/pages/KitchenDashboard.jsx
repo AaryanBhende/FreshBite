@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { readJsonResponse } from '../utils/readJsonResponse';
 import '../assets/style/kitchen.css';
 
 const TYPES = ['All', 'Dine In', 'Delivery', 'Takeout'];
@@ -27,7 +28,7 @@ export default function KitchenDashboard() {
         fetch(`/api/kds/orders${filter === 'All' ? '' : `?type=${encodeURIComponent(filter)}`}`, { headers }),
         fetch('/api/menu'),
       ]);
-      const orderData = await orderRes.json();
+      const orderData = await readJsonResponse(orderRes);
       if (!orderRes.ok) throw new Error(orderData.error || 'Could not load kitchen orders.');
       if (!menuRes.ok) throw new Error('Could not load menu availability.');
       const nextOrders = orderData.orders || [];
@@ -46,7 +47,7 @@ export default function KitchenDashboard() {
       }
       nextOrders.forEach(order => knownOrders.current.add(order.order_id));
       setOrders(nextOrders);
-      setMenu(await menuRes.json());
+      setMenu(await readJsonResponse(menuRes));
       setError('');
     } catch (e) { setError(e.message); }
   }, [filter, token]);
@@ -54,7 +55,7 @@ export default function KitchenDashboard() {
   const loadHistory = useCallback(async () => {
     try {
       const res = await fetch('/api/kds/history', { headers });
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) throw new Error(data.error || 'Could not load history.');
       setHistory(data.orders || []);
     } catch (e) { setError(e.message); }
@@ -70,21 +71,27 @@ export default function KitchenDashboard() {
   const selectTab = (nextTab) => setSearchParams({ view: nextTab });
 
   const updateStatus = async (id, status) => {
-    const res = await fetch(`/api/kds/orders/${encodeURIComponent(id)}/status`, { method: 'PUT', headers, body: JSON.stringify({ status }) });
-    const data = await res.json();
-    if (!res.ok) return setError(data.error || 'Could not update order.');
-    await refresh(); if (tab === 'history') await loadHistory();
+    try {
+      const res = await fetch(`/api/kds/orders/${encodeURIComponent(id)}/status`, { method: 'PUT', headers, body: JSON.stringify({ status }) });
+      const data = await readJsonResponse(res);
+      if (!res.ok) return setError(data.error || 'Could not update order.');
+      await refresh(); if (tab === 'history') await loadHistory();
+    } catch (error) { setError(error.message || 'Could not update order.'); }
   };
   const bumpItem = async (itemId) => {
-    const res = await fetch(`/api/kds/orders/items/${encodeURIComponent(itemId)}/bump`, { method: 'PUT', headers, body: '{}' });
-    const data = await res.json();
-    if (!res.ok) return setError(data.error || 'Could not update item.');
-    await refresh();
+    try {
+      const res = await fetch(`/api/kds/orders/items/${encodeURIComponent(itemId)}/bump`, { method: 'PUT', headers, body: '{}' });
+      const data = await readJsonResponse(res);
+      if (!res.ok) return setError(data.error || 'Could not update item.');
+      await refresh();
+    } catch (error) { setError(error.message || 'Could not update item.'); }
   };
   const toggleAvailability = async (item) => {
-    const res = await fetch(`/api/menu/${encodeURIComponent(item.id)}/availability`, { method: 'PUT', headers, body: JSON.stringify({ is_available: !Boolean(item.is_available) }) });
-    const data = await res.json();
-    if (!res.ok) setError(data.error || 'Could not update availability.'); else refresh();
+    try {
+      const res = await fetch(`/api/menu/${encodeURIComponent(item.id)}/availability`, { method: 'PUT', headers, body: JSON.stringify({ is_available: !Boolean(item.is_available) }) });
+      const data = await readJsonResponse(res);
+      if (!res.ok) setError(data.error || 'Could not update availability.'); else await refresh();
+    } catch (error) { setError(error.message || 'Could not update availability.'); }
   };
 
   const shownOrders = (tab === 'history' ? history : orders).filter(order => filter === 'All' || order.order_type === filter);

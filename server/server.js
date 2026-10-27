@@ -37,9 +37,10 @@ app.use(express.urlencoded({ extended: true }));
 // 3. Rate Limiting (Prevents API abuse)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per window
+  max: Number.parseInt(process.env.API_RATE_LIMIT_MAX, 10) || 1200,
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (_req, res) => res.status(429).json({ error: 'API request limit reached. Please try again shortly.' }),
 });
 app.use('/api/', apiLimiter);
 
@@ -65,11 +66,16 @@ app.use('/api/promotions', promotionRoutes);
 app.use('/api/rush', rushRoutes);
 app.use('/api/contact', contactRoutes);
 
+// Keep unknown API paths in the same JSON response contract as known routes.
+app.use('/api', (req, res) => res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` }));
+
 // Global Error Handler
 app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
   console.error('Server Error:', err.stack);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error',
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 500;
+  res.status(status).json({
+    error: status < 500 ? err.message : 'Internal Server Error',
   });
 });
 

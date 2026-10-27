@@ -1,4 +1,5 @@
 import pool from '../config/db.js';
+import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 
 const CAFE_LOCATION = { lat: 15.4800, lng: 73.8080 };
 const toRadians = (degrees) => degrees * Math.PI / 180;
@@ -47,7 +48,7 @@ export const getOrders = async (req, res) => {
       WHERE orders.order_id IN (${placeholders})
       ORDER BY orders.created_at DESC
       `, orderIds);
-      rows = orderRows;
+      rows = orderRows.map(({ delivery_otp_hash, delivery_otp_expires_at, delivery_otp_attempts, ...safeRow }) => safeRow);
     }
     const total = Number(countRow?.total || 0);
     res.json({
@@ -74,12 +75,30 @@ export const markDeliveryFailureRead = async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
+export const markDeliveryPickedUp = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT order_type, kitchen_status, delivery_status FROM orders WHERE order_id = ? FOR UPDATE', [req.params.orderId]);
+    if (!rows.length) { await connection.rollback(); return res.status(404).json({ error: 'Delivery order not found.' }); }
+    const order = rows[0];
+    if (order.order_type !== 'Delivery') { await connection.rollback(); return res.status(400).json({ error: 'Pickup confirmation is only available for delivery orders.' }); }
+    if (order.kitchen_status !== 'ready') { await connection.rollback(); return res.status(409).json({ error: 'The kitchen must mark this order ready before pickup.' }); }
+    if (order.delivery_status === 'picked_up') { await connection.rollback(); return res.json({ message: 'Pickup was already confirmed.', status: 'picked_up' }); }
+    if (order.delivery_status !== 'accepted') { await connection.rollback(); return res.status(409).json({ error: 'The assigned driver must accept this delivery before pickup can be confirmed.' }); }
+    await connection.query("UPDATE orders SET delivery_status = 'picked_up' WHERE order_id = ?", [req.params.orderId]);
+    await connection.commit();
+    res.json({ message: 'Driver pickup confirmed.', status: 'picked_up' });
+  } catch (error) { await connection.rollback(); res.status(500).json({ error: error.message }); }
+  finally { connection.release(); }
+};
+
 export const getDriverOrders = async (req, res) => {
   try {
-    const [rows] = await pool.query(`SELECT o.order_id, o.order_type, o.address, o.coordinates, o.delivery_status, o.delivery_failure_reason,
+    const [rows] = await pool.query(`SELECT o.order_id, o.order_type, o.address, o.coordinates, o.delivery_status, o.delivery_failure_reason, o.delivery_otp_expires_at,
       o.created_at, u.name AS customer_name, o.title, o.quantity, o.notes
       FROM orders o LEFT JOIN users u ON u.id = o.user_id
-      WHERE o.driver_id = ? AND o.delivery_status IN ('assigned', 'accepted') ORDER BY o.created_at`, [req.user.id]);
+      WHERE o.driver_id = ? AND o.delivery_status IN ('assigned', 'accepted', 'picked_up', 'awaiting_otp') ORDER BY o.created_at`, [req.user.id]);
     const groups = new Map();
     rows.forEach(row => {
       if (!groups.has(row.order_id)) groups.set(row.order_id, { ...row, items: [] });
@@ -87,6 +106,53 @@ export const getDriverOrders = async (req, res) => {
     });
     res.json([...groups.values()]);
   } catch (error) { res.status(500).json({ error: error.message }); }
+};
+
+const hashDeliveryOtp = (otp) => createHmac('sha256', process.env.DELIVERY_OTP_SECRET || process.env.JWT_SECRET || 'freshbite_secret_key_123').update(otp).digest();
+
+export const generateDeliveryOtp = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT delivery_status FROM orders WHERE order_id = ? AND driver_id = ? FOR UPDATE', [req.params.orderId, req.user.id]);
+    if (!rows.length) { await connection.rollback(); return res.status(404).json({ error: 'Assigned delivery not found.' }); }
+    if (!['picked_up', 'awaiting_otp'].includes(rows[0].delivery_status)) {
+      await connection.rollback();
+      return res.status(409).json({ error: 'Confirm pickup before generating a delivery verification code.' });
+    }
+    const otp = String(randomInt(0, 10000)).padStart(4, '0');
+    await connection.query("UPDATE orders SET delivery_status = 'awaiting_otp', delivery_otp_hash = ?, delivery_otp_expires_at = DATE_ADD(NOW(), INTERVAL 5 MINUTE), delivery_otp_attempts = 0 WHERE order_id = ? AND driver_id = ?", [hashDeliveryOtp(otp), req.params.orderId, req.user.id]);
+    const [[expiry]] = await connection.query('SELECT delivery_otp_expires_at FROM orders WHERE order_id = ? LIMIT 1', [req.params.orderId]);
+    await connection.commit();
+    res.json({ message: 'Delivery verification code generated. Share it with the customer.', otp, expires_at: expiry.delivery_otp_expires_at });
+  } catch (error) { await connection.rollback(); res.status(500).json({ error: error.message }); }
+  finally { connection.release(); }
+};
+
+export const verifyDeliveryOtp = async (req, res) => {
+  const otp = String(req.body?.otp || '');
+  if (!/^\d{4}$/.test(otp)) return res.status(400).json({ error: 'Enter the four-digit delivery verification code.' });
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT delivery_otp_hash, delivery_otp_attempts, delivery_otp_expires_at > NOW() AS otp_is_valid FROM orders WHERE order_id = ? AND user_id = ? AND order_type = \'Delivery\' FOR UPDATE', [req.params.orderId, req.user.id]);
+    if (!rows.length) { await connection.rollback(); return res.status(404).json({ error: 'Delivery order not found.' }); }
+    const order = rows[0];
+    if (!order.delivery_otp_hash) { await connection.rollback(); return res.status(409).json({ error: 'No active verification code. Ask your driver to generate or regenerate one.' }); }
+    if (!order.otp_is_valid) { await connection.rollback(); return res.status(410).json({ error: 'This verification code has expired. Ask your driver to regenerate it.' }); }
+    if (Number(order.delivery_otp_attempts) >= 5) { await connection.rollback(); return res.status(429).json({ error: 'Too many incorrect attempts. Ask your driver to generate a new code.' }); }
+    const storedHash = Buffer.from(order.delivery_otp_hash);
+    if (storedHash.length !== 32 || !timingSafeEqual(storedHash, hashDeliveryOtp(otp))) {
+      const attempts = Number(order.delivery_otp_attempts) + 1;
+      await connection.query('UPDATE orders SET delivery_otp_attempts = ?, delivery_otp_hash = IF(? >= 5, NULL, delivery_otp_hash), delivery_otp_expires_at = IF(? >= 5, NULL, delivery_otp_expires_at) WHERE order_id = ? AND user_id = ?', [attempts, attempts, attempts, req.params.orderId, req.user.id]);
+      await connection.commit();
+      return res.status(attempts >= 5 ? 429 : 400).json({ error: attempts >= 5 ? 'Too many incorrect attempts. Ask your driver to generate a new code.' : 'That verification code is incorrect.' });
+    }
+    await connection.query("UPDATE orders SET delivery_status = 'delivered', completed = 1, delivery_otp_hash = NULL, delivery_otp_expires_at = NULL, delivery_otp_attempts = 0 WHERE order_id = ? AND user_id = ?", [req.params.orderId, req.user.id]);
+    await connection.commit();
+    res.json({ message: 'Delivery confirmed. Thank you!', status: 'delivered' });
+  } catch (error) { await connection.rollback(); res.status(500).json({ error: error.message }); }
+  finally { connection.release(); }
 };
 
 export const getDriverAnalytics = async (req, res) => {
@@ -130,7 +196,7 @@ export const getDriverAnalytics = async (req, res) => {
 export const updateDriverDelivery = async (req, res) => {
   const { status, reason = '', details = '' } = req.body;
   const failureTags = ['Customer not available', 'Missing/destroyed one or more item', 'Wrong order'];
-  if (!['accepted', 'delivered', 'failed'].includes(status)) return res.status(400).json({ error: 'Invalid delivery status.' });
+  if (!['accepted', 'failed'].includes(status)) return res.status(400).json({ error: 'Delivery completion requires customer OTP verification.' });
   if (status === 'failed' && !failureTags.includes(String(reason))) return res.status(400).json({ error: 'Select a valid delivery failure reason.' });
   if (typeof details !== 'string' || details.length > 2000) return res.status(400).json({ error: 'Failure details must be 2000 characters or fewer.' });
   const connection = await pool.getConnection();
@@ -140,8 +206,8 @@ export const updateDriverDelivery = async (req, res) => {
     if (!rows.length) { await connection.rollback(); return res.status(404).json({ error: 'Assigned delivery not found.' }); }
     const current = rows[0].delivery_status;
     if (status === 'accepted' && current !== 'assigned') { await connection.rollback(); return res.status(409).json({ error: 'This delivery is no longer awaiting acceptance.' }); }
-    if (status !== 'accepted' && current !== 'accepted') { await connection.rollback(); return res.status(409).json({ error: 'Accept the delivery before submitting its outcome.' }); }
-    await connection.query('UPDATE orders SET delivery_status = ?, delivery_failure_reason = ?, delivery_failure_details = ?, delivery_failure_read_at = NULL, completed = ? WHERE order_id = ? AND driver_id = ?', [status, status === 'failed' ? String(reason) : null, status === 'failed' ? details.trim() || null : null, status === 'delivered' ? 1 : 0, req.params.orderId, req.user.id]);
+    if (status === 'failed' && !['picked_up', 'awaiting_otp'].includes(current)) { await connection.rollback(); return res.status(409).json({ error: 'Admin pickup confirmation is required before reporting a delivery failure.' }); }
+    await connection.query('UPDATE orders SET delivery_status = ?, delivery_failure_reason = ?, delivery_failure_details = ?, delivery_failure_read_at = NULL, delivery_otp_hash = NULL, delivery_otp_expires_at = NULL, delivery_otp_attempts = 0, completed = 0 WHERE order_id = ? AND driver_id = ?', [status, status === 'failed' ? String(reason) : null, status === 'failed' ? details.trim() || null : null, req.params.orderId, req.user.id]);
     await connection.commit();
     res.json({ message: 'Delivery status updated.', status });
   } catch (error) { await connection.rollback(); res.status(500).json({ error: error.message }); }
@@ -245,7 +311,7 @@ export const createOrder = async (req, res) => {
       let assignedDriverId = null;
       for (const driver of drivers) {
         const [activeOrders] = await connection.query(
-          "SELECT id FROM orders WHERE driver_id = ? AND delivery_status IN ('assigned', 'accepted') LIMIT 1 FOR UPDATE",
+          "SELECT id FROM orders WHERE driver_id = ? AND delivery_status IN ('assigned', 'accepted', 'picked_up', 'awaiting_otp') LIMIT 1 FOR UPDATE",
           [driver.id]
         );
         if (!activeOrders.length) { assignedDriverId = driver.id; break; }
@@ -443,9 +509,12 @@ export const getUserOrders = async (req, res) => {
     const orders = Array.from(groupMap.values()).map((group) => {
       const ageMinutes = (Date.now() - new Date(group.created_at).getTime()) / 60000;
       if (group.order_type === 'Delivery') {
-        group.stage = group.delivery_status === 'accepted' ? 'out_for_delivery'
-          : group.delivery_status === 'delivered' ? 'completed'
-            : group.delivery_status === 'failed' ? 'delivery_failed' : 'ready';
+        group.stage = group.delivery_status === 'awaiting_otp' ? 'awaiting_delivery_otp'
+          : group.delivery_status === 'picked_up' ? 'out_for_delivery'
+            : group.delivery_status === 'delivered' ? 'completed'
+              : group.delivery_status === 'failed' ? 'delivery_failed'
+                : group.kitchen_status === 'ready' ? 'ready'
+                  : group.kitchen_status === 'preparing' ? 'preparing' : 'placed';
       } else if (group.completed) {
         group.stage = 'completed';
       } else if (group.kitchen_status === 'ready') {
@@ -495,10 +564,11 @@ export const getOrderStatus = async (req, res) => {
 
     let stage;
     const deliveryStatus = rows[0].delivery_status;
-    if (orderType === 'Delivery' && ['accepted', 'delivered', 'failed'].includes(deliveryStatus)) {
-      stage = deliveryStatus === 'accepted' ? 'out_for_delivery'
+    if (orderType === 'Delivery' && ['awaiting_otp', 'picked_up', 'delivered', 'failed'].includes(deliveryStatus)) {
+      stage = deliveryStatus === 'awaiting_otp' ? 'awaiting_delivery_otp'
+        : deliveryStatus === 'picked_up' ? 'out_for_delivery'
         : deliveryStatus === 'delivered' ? 'completed' : 'delivery_failed';
-    } else if (allCompleted) stage = 'completed';
+    } else if (allCompleted && orderType !== 'Delivery') stage = 'completed';
     else if (rows.some((r) => r.kitchen_status === 'ready')) stage = 'ready';
     else if (rows.some((r) => r.kitchen_status === 'preparing')) stage = 'preparing';
     else if (orderType === 'Delivery') {

@@ -2,6 +2,7 @@ import React, { useContext, useState, useEffect } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import AuthModal from "../pages/AuthModal";
+import { readJsonResponse } from "../utils/readJsonResponse";
 
 export default function Navbar() {
   const { user, token, logout } = useContext(AuthContext);
@@ -59,7 +60,7 @@ export default function Navbar() {
     const loadKitchenCount = async () => {
       try {
         const response = await fetch('/api/kds/orders', { headers: { Authorization: `Bearer ${token}` } });
-        if (response.ok) setKitchenOrderCount((await response.json()).orders?.length || 0);
+        if (response.ok) setKitchenOrderCount((await readJsonResponse(response)).orders?.length || 0);
       } catch { /* The dashboard displays its own connection state. */ }
     };
     loadKitchenCount();
@@ -73,7 +74,7 @@ export default function Navbar() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const messages = await res.json();
+      const messages = await readJsonResponse(res);
 
       let readMessageIds = [];
       try {
@@ -160,10 +161,10 @@ export default function Navbar() {
             </li>}
 
             {isAdmin && <>
-              <li><NavLink to="/admin" end className={({ isActive }) => isActive ? "active" : ""}>📋 Dashboard</NavLink></li>
-              <li><NavLink to="/admin/operations" className={({ isActive }) => isActive ? "active" : ""}>⚡ Operations</NavLink></li>
-              <li><NavLink to="/admin/marketing" className={({ isActive }) => isActive ? "active" : ""}>📢 Marketing</NavLink></li>
-              <li><NavLink to="/admin/management" className={({ isActive }) => isActive ? "active" : ""}>🛠️ Management</NavLink></li>
+              <li><NavLink to="/admin" end className={({ isActive }) => isActive ? "active" : ""}>Dashboard</NavLink></li>
+              <li><NavLink to="/admin/operations" className={({ isActive }) => isActive ? "active" : ""}>Operations</NavLink></li>
+              <li><NavLink to="/admin/marketing" className={({ isActive }) => isActive ? "active" : ""}>Marketing</NavLink></li>
+              <li><NavLink to="/admin/management" className={({ isActive }) => isActive ? "active" : ""}>Management</NavLink></li>
             </>}
 
             {isDriver && <li className="driver-portal-badge"><NavLink to="/driver" end className={({ isActive }) => isActive ? "active" : ""}>Assigned Deliveries</NavLink></li>}

@@ -6,6 +6,7 @@ import AdminReviews from "../components/AdminReviews";
 import AdminPromotions from "../components/AdminPromotions";
 import AdminCRM from "../components/AdminCRM";
 import AdminEmployees from "../components/AdminEmployees";
+import { readJsonResponse } from "../utils/readJsonResponse";
 import "../assets/style/menu.css";
 
 const AVAILABLE_TAGS = ["Vegetarian", "Non-Veg", "Vegan", "Gluten-Free"];
@@ -105,11 +106,11 @@ export default function AdminMenu() {
   useEffect(() => {
     if (sectionTab === "overview") {
       fetchMenuItems();
-      fetch('/api/rush').then((res) => res.json()).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
+      fetch('/api/rush').then(readJsonResponse).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
     } else if (sectionTab === "menu") {
       fetchMenuItems();
     } else if (sectionTab === "rush") {
-      fetch('/api/rush').then((res) => res.json()).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
+      fetch('/api/rush').then(readJsonResponse).then((data) => setRushOverride(data.rushOverride || 'automatic')).catch(() => {});
     }
   }, [sectionTab]);
 
@@ -143,7 +144,7 @@ export default function AdminMenu() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const messages = await res.json();
+      const messages = await readJsonResponse(res);
       setMailtrapMessages(messages);
 
       // Filter only unread messages
@@ -172,7 +173,7 @@ export default function AdminMenu() {
         method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ rush_override: value }),
       });
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data.error || 'Could not save setting.');
       setRushMessage('Rush status updated.');
     } catch (error) { setRushMessage(error.message); }
@@ -202,7 +203,7 @@ export default function AdminMenu() {
   const fetchMenuItems = async () => {
     try {
       const res = await fetch("/api/menu");
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       setItems(data);
     } catch (error) {
       console.error("Failed to fetch menu items:", error);
@@ -326,7 +327,7 @@ export default function AdminMenu() {
       if (!res.ok) {
         throw new Error(`Server error:${res.status}`);
       }
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       const rows = Array.isArray(data) ? data : data.orders || [];
       groupOrdersByGroupId(rows, mode);
       const pagination = data.pagination || {};
@@ -469,6 +470,19 @@ export default function AdminMenu() {
     }
   };
 
+  const handleConfirmPickup = async (group) => {
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(group.order_id)}/picked-up`, {
+        method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data.error || 'Could not confirm driver pickup.');
+      fetchOrders();
+    } catch (error) {
+      window.alert(error.message);
+    }
+  };
+
   const handleDeleteGroup = async (group) => {
     if (!window.confirm("Are you sure you want to delete this complete order group?")) return;
     try {
@@ -489,6 +503,14 @@ export default function AdminMenu() {
   if (user?.role !== "admin") {
     return <p className="menu-main">Access Denied. Admins only.</p>;
   }
+
+  const activePendingDeliveriesCount = groupedOrders.filter((group) => {
+    const isDelivery = String(group.order_type || '').toLowerCase() === 'delivery' || Boolean(group.delivery_status);
+    if (!isDelivery) return false;
+    const isCompletedOrDelivered = Boolean(group.completed) || group.delivery_status === 'delivered' || group.stage === 'completed';
+    const isFailed = group.delivery_status === 'failed' || group.stage === 'delivery_failed';
+    return !isCompletedOrDelivered && !isFailed;
+  }).length;
 
   return (
     <main className="menu-main admin-main">
@@ -514,7 +536,7 @@ export default function AdminMenu() {
               <p>Items on your cafe menu</p>
             </article>
             <article className="sidebar-card admin-dashboard-card">
-              <span>Orders</span><strong>{groupedOrders.length}</strong>
+              <span>Orders</span><strong>{activePendingDeliveriesCount}</strong>
               <p>Stay on top of every order</p>
             </article>
             <article className="sidebar-card admin-dashboard-card">
@@ -782,13 +804,17 @@ export default function AdminMenu() {
                         <td>
                           <span
                             className={`admin-status ${
-                              group.delivery_status === 'failed' ? "admin-status--failed" : group.completed || group.kitchen_status === 'ready' ? "admin-status--completed" : "admin-status--pending"
+                              group.delivery_status === 'failed' ? "admin-status--failed" : group.delivery_status === 'picked_up' || group.delivery_status === 'delivered' || group.completed || group.kitchen_status === 'ready' ? "admin-status--completed" : "admin-status--pending"
                             }`}
                           >
-                            {group.order_type === 'Delivery' ? (group.delivery_status || (group.kitchen_status === 'ready' ? 'Ready' : group.kitchen_status === 'preparing' ? 'Preparing' : 'Pending')) : group.completed ? "Completed" : group.kitchen_status === 'ready' ? 'Ready' : group.kitchen_status === 'preparing' ? 'Preparing' : 'Pending'}
+                            {group.order_type === 'Delivery' ? (group.delivery_status === 'awaiting_otp' ? 'Awaiting Customer OTP' : group.delivery_status === 'picked_up' ? 'Out for Delivery' : group.delivery_status === 'delivered' ? 'Completed' : group.delivery_status === 'failed' ? 'Delivery Failed' : group.kitchen_status === 'ready' ? 'Ready for Delivery' : group.kitchen_status === 'preparing' ? 'Being Prepared' : group.delivery_status === 'accepted' ? 'Accepted · Awaiting Pickup' : 'Order Placed') : group.completed ? "Completed" : group.kitchen_status === 'ready' ? 'Ready' : group.kitchen_status === 'preparing' ? 'Preparing' : 'Pending'}
                           </span>
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
+                          {group.order_type === 'Delivery' && group.kitchen_status === 'ready' && group.delivery_status === 'accepted' && <button
+                            className="btn-secondary admin-btn-sm admin-btn-mark"
+                            onClick={() => handleConfirmPickup(group)}
+                          >Picked Up</button>}
                           {group.order_type !== 'Delivery' && <button
                             className="btn-secondary admin-btn-sm admin-btn-mark"
                             onClick={() => handleToggleGroupCompleted(group)}

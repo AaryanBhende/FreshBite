@@ -1,7 +1,8 @@
-import { useState, useEffect, useContext } from 'react';
+import { Fragment, useState, useEffect, useContext } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { GoogleMap, InfoWindow, Marker, OverlayView, Polyline, useLoadScript } from '@react-google-maps/api';
 import { AuthContext } from '../context/AuthContext';
+import { readJsonResponse } from '../utils/readJsonResponse';
 import { announceDeliveryArrival, DELIVERY_TRIP_DURATION_MS, ensureDeliveryTripStarted, readDeliveryTrip } from '../utils/deliveryTrip';
 import '../assets/style/profile.css';
 
@@ -209,6 +210,10 @@ export default function OrderTracker() {
   const [issueSending, setIssueSending] = useState(false);
   const [issueFeedback, setIssueFeedback] = useState('');
   const [issueError, setIssueError] = useState('');
+  const [deliveryOtp, setDeliveryOtp] = useState('');
+  const [deliveryOtpSending, setDeliveryOtpSending] = useState(false);
+  const [deliveryOtpFeedback, setDeliveryOtpFeedback] = useState('');
+  const [deliveryOtpError, setDeliveryOtpError] = useState('');
 
   useEffect(() => {
     if (!user || !token) return;
@@ -221,7 +226,7 @@ export default function OrderTracker() {
   const destination = parseCoordinates(statusData);
   const isDelivery = String(statusData?.order_type || '').toLowerCase() === 'delivery';
   useEffect(() => {
-    if (!isDelivery || statusData?.stage !== 'out_for_delivery') {
+    if (!isDelivery || !['out_for_delivery', 'awaiting_delivery_otp'].includes(statusData?.stage)) {
       setTripStartedAt(null);
       return;
     }
@@ -235,12 +240,12 @@ export default function OrderTracker() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const data = await res.json();
+        const data = await readJsonResponse(res);
         setError(data.error || 'Failed to fetch order status.');
         setLoading(false);
         return;
       }
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       setStatusData(data);
       setError('');
     } catch (err) {
@@ -261,7 +266,7 @@ export default function OrderTracker() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ order_id: statusData.order_id, issue_tag: issueTag, message: issueMessage }),
       });
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data.error || 'Could not send your issue report.');
       setIssueFeedback(data.message || 'Your issue report was sent.');
       setIssueTag('');
@@ -271,6 +276,29 @@ export default function OrderTracker() {
       setIssueError(submitError.message);
     } finally {
       setIssueSending(false);
+    }
+  };
+
+  const submitDeliveryOtp = async (event) => {
+    event.preventDefault();
+    setDeliveryOtpSending(true);
+    setDeliveryOtpFeedback('');
+    setDeliveryOtpError('');
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/verify-delivery-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ otp: deliveryOtp }),
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data.error || 'Could not verify the delivery code.');
+      setDeliveryOtp('');
+      setDeliveryOtpFeedback(data.message || 'Delivery confirmed. Thank you!');
+      await fetchStatus();
+    } catch (verifyError) {
+      setDeliveryOtpError(verifyError.message);
+    } finally {
+      setDeliveryOtpSending(false);
     }
   };
 
@@ -315,10 +343,15 @@ export default function OrderTracker() {
     );
   }
 
-  const steps = isDelivery ? STEPS_DELIVERY : STEPS_DINE_TAKEOUT;
+  const isDeliveryFailed = isDelivery && statusData.stage === 'delivery_failed';
+  const steps = isDelivery
+    ? STEPS_DELIVERY.map((step) => step.key === 'completed' && isDeliveryFailed
+      ? { ...step, key: 'delivery_failed', label: 'Delivery Failed', icon: 'X', description: 'Our team has been notified that delivery could not be completed.' }
+      : step)
+    : STEPS_DINE_TAKEOUT;
 
   // Determine which step index is currently active
-  const activeIndex = steps.findIndex((s) => s.key === statusData.stage);
+  const activeIndex = steps.findIndex((step) => step.key === (statusData.stage === 'awaiting_delivery_otp' ? 'out_for_delivery' : statusData.stage));
 
   // Format the placed date nicely
   const placedDate = new Date(statusData.created_at).toLocaleString('en-IN', {
@@ -351,13 +384,22 @@ export default function OrderTracker() {
                 <DeliveryMap
                   destination={destination}
                   address={statusData.address}
-                  showDriver={statusData.stage === 'out_for_delivery'}
+                  showDriver={['out_for_delivery', 'awaiting_delivery_otp'].includes(statusData.stage)}
                   tripStartedAt={tripStartedAt}
                   orderId={orderId}
                 />
               ) : <p className="tracker-map-unavailable">Delivery location is not available for this order.</p>}
               {statusData.stage === 'out_for_delivery' && <p className="tracker-driver-caption">{destination ? 'Your driver is on the way.' : 'Your order is out for delivery.'}</p>}
               {statusData.stage === 'delivery_failed' && <p role="status">Delivery could not be completed{statusData.delivery_failure_reason ? `: ${statusData.delivery_failure_reason}` : '.'}</p>}
+              {statusData.delivery_status === 'awaiting_otp' && <form className="tracker-delivery-otp" onSubmit={submitDeliveryOtp}>
+                <h4>Confirm your delivery</h4>
+                <p>Ask your driver for the four-digit delivery code and enter it to complete this order. The code expires after five minutes.</p>
+                <label htmlFor="delivery-verification-otp">Delivery verification code</label>
+                <input id="delivery-verification-otp" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={deliveryOtp} onChange={(event) => setDeliveryOtp(event.target.value.replace(/\D/g, '').slice(0, 4))} required />
+                <button type="submit" disabled={deliveryOtpSending || deliveryOtp.length !== 4}>{deliveryOtpSending ? 'Verifying…' : 'Confirm delivery'}</button>
+                {deliveryOtpFeedback && <p className="tracker-otp-success" role="status">{deliveryOtpFeedback}</p>}
+                {deliveryOtpError && <p className="tracker-otp-error" role="alert">{deliveryOtpError}</p>}
+              </form>}
             </section>
           )}
 
@@ -365,25 +407,27 @@ export default function OrderTracker() {
           <div className="tracker-stepper">
             {steps.map((step, idx) => {
               const isDone = idx < activeIndex;
-              const isActive = idx === activeIndex;
+              const isActive = !isDeliveryFailed && idx === activeIndex;
+              const isFailed = isDeliveryFailed && step.key === 'delivery_failed';
               const isLast = idx === steps.length - 1;
 
               return (
-                <div className="tracker-step" key={step.key}>
+                <Fragment key={step.key}>
+                <div className="tracker-step">
                   <div className="step-icon-col">
                     <div
-                      className={`step-circle ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}`}
+                      className={`step-circle ${isDone ? 'done' : ''} ${isActive ? 'active' : ''} ${isFailed ? 'failed' : ''}`}
                       aria-label={isDone ? 'Completed step' : isActive ? 'Current step' : 'Upcoming step'}
                     >
                       {isDone ? '✓' : step.icon}
                     </div>
                     {!isLast && (
-                      <div className={`step-line ${isDone ? 'done' : ''}`} />
+                      <div className={`step-line ${isDone && !(isDeliveryFailed && step.key === 'out_for_delivery') ? 'done' : ''}`} />
                     )}
                   </div>
                   <div className="step-content">
                     <div
-                      className={`step-label ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}`}
+                      className={`step-label ${isDone ? 'done' : ''} ${isActive ? 'active' : ''} ${isFailed ? 'failed' : ''}`}
                     >
                       {step.label}
                     </div>
@@ -394,6 +438,7 @@ export default function OrderTracker() {
                     </div>
                   </div>
                 </div>
+                </Fragment>
               );
             })}
           </div>

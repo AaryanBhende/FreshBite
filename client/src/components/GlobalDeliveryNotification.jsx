@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { readJsonResponse } from '../utils/readJsonResponse';
 import {
   announceDeliveryArrival,
   DELIVERY_TRIP_DURATION_MS,
@@ -20,7 +21,7 @@ export default function GlobalDeliveryNotification() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) return;
-      const orders = await response.json();
+      const orders = await readJsonResponse(response);
       orders.forEach((order) => {
         if (String(order.order_type).toLowerCase() !== 'delivery' || order.stage !== 'out_for_delivery') return;
         const savedTrip = readDeliveryTrip(order.order_id);

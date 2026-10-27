@@ -199,8 +199,9 @@ export const createPromotion = async (req, res) => {
     console.error('Promotion creation failed:', error.message);
     res.status(500).json({ error: 'Could not create promotion.' });
   } finally {
-    await unlockPromoSlots(connection, lockedSlots);
-    connection.release();
+    try { await unlockPromoSlots(connection, lockedSlots); }
+    catch (unlockError) { console.error('Could not release promotion slot locks:', unlockError.message); }
+    finally { connection.release(); }
   }
 };
 
@@ -300,8 +301,9 @@ export const updatePromotion = async (req, res) => {
     if (error.code === 'PROMO_SLOT_LOCK_TIMEOUT') return res.status(409).json({ error: error.message });
     res.status(500).json({ error: 'Could not update promotion.' });
   } finally {
-    await unlockPromoSlots(connection, lockedSlots);
-    connection.release();
+    try { await unlockPromoSlots(connection, lockedSlots); }
+    catch (unlockError) { console.error('Could not release promotion slot locks:', unlockError.message); }
+    finally { connection.release(); }
   }
 };
 
@@ -329,8 +331,9 @@ export const deletePromotion = async (req, res) => {
     if (error.code === 'PROMO_SLOT_LOCK_TIMEOUT') return res.status(409).json({ error: error.message });
     res.status(500).json({ error: 'Could not delete promotion.' });
   } finally {
-    await unlockPromoSlots(connection, lockedSlots);
-    connection.release();
+    try { await unlockPromoSlots(connection, lockedSlots); }
+    catch (unlockError) { console.error('Could not release promotion slot locks:', unlockError.message); }
+    finally { connection.release(); }
   }
 };
 
@@ -365,8 +368,9 @@ export const setPromotionActive = async (req, res) => {
     if (error.code === 'PROMO_SLOT_LOCK_TIMEOUT') return res.status(409).json({ error: error.message });
     res.status(500).json({ error: 'Could not update promotion.' });
   } finally {
-    await unlockPromoSlots(connection, lockedSlots);
-    connection.release();
+    try { await unlockPromoSlots(connection, lockedSlots); }
+    catch (unlockError) { console.error('Could not release promotion slot locks:', unlockError.message); }
+    finally { connection.release(); }
   }
 };
 
