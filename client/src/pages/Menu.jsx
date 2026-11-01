@@ -91,6 +91,9 @@ export default function Menu() {
   const [dineInFeedback, setDineInFeedback] = useState('');
   const formRef = useRef(null);
   const summaryRef = useRef(null);
+  const recScrollRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const [picks, setPicks] = useState([]);
   const [picksOpen, setPicksOpen] = useState(false);
@@ -151,6 +154,32 @@ export default function Menu() {
     setPicksOpen(true);
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  const syncRecScrollBtns = () => {
+    const el = recScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  };
+
+  const scrollRecsBy = (direction) => {
+    const el = recScrollRef.current;
+    if (!el) return;
+    const cardWidth = el.querySelector('.catalog-card')?.offsetWidth || 280;
+    el.scrollBy({ left: direction * (cardWidth + 16), behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const el = recScrollRef.current;
+    if (!el) return undefined;
+    syncRecScrollBtns();
+    el.addEventListener('scroll', syncRecScrollBtns);
+    window.addEventListener('resize', syncRecScrollBtns);
+    return () => {
+      el.removeEventListener('scroll', syncRecScrollBtns);
+      window.removeEventListener('resize', syncRecScrollBtns);
+    };
+  }, [recommendations]);
 
   useEffect(() => {
     fetchMenuItems();
@@ -560,14 +589,38 @@ export default function Menu() {
             <h2>Recommended Items</h2>
             <p>{recommendations.basis}</p>
           </div>
-          <ProductGrid
-            items={recommendations.items}
-            onSelectDish={addRecommendedItem}
-            onReviewSubmitted={fetchMenuItems}
-            horizontal
-          />
+          <div className="recommendations-scroll-wrapper">
+            <button
+              type="button"
+              className={`rec-nav-btn rec-nav-btn--left${!canScrollLeft ? ' rec-nav-btn--hidden' : ''}`}
+              aria-label="Scroll recommendations left"
+              disabled={!canScrollLeft}
+              onClick={() => scrollRecsBy(-1)}
+            >
+              ‹
+            </button>
+            <div className="rec-scroll-viewport">
+              <ProductGrid
+                items={recommendations.items}
+                onSelectDish={addRecommendedItem}
+                onReviewSubmitted={fetchMenuItems}
+                horizontal
+                gridRef={recScrollRef}
+              />
+            </div>
+            <button
+              type="button"
+              className={`rec-nav-btn rec-nav-btn--right${!canScrollRight ? ' rec-nav-btn--hidden' : ''}`}
+              aria-label="Scroll recommendations right"
+              disabled={!canScrollRight}
+              onClick={() => scrollRecsBy(1)}
+            >
+              ›
+            </button>
+          </div>
         </section>
       )}
+
       <section className="menu-layout">
         <section className="catalog-section">
           <div className="catalog-top-bar">

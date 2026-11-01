@@ -81,9 +81,14 @@ export const updateKitchenStatus = async (req, res) => {
         await connection.rollback();
         return res.status(409).json({ error: 'Bump every dine-in item before marking the order ready.' });
       }
+      if (items[0]?.order_type === 'Dine In') {
+        await connection.query('UPDATE orders SET kitchen_status = ?, completed = 1 WHERE order_id = ?', [status, req.params.id]);
+      } else {
+        await connection.query('UPDATE orders SET kitchen_status = ? WHERE order_id = ?', [status, req.params.id]);
+      }
+    } else {
+      await connection.query('UPDATE orders SET kitchen_status = ?, completed = 0 WHERE order_id = ?', [status, req.params.id]);
     }
-    if (status === 'preparing') await connection.query('UPDATE orders SET kitchen_status = ?, completed = 0 WHERE order_id = ?', [status, req.params.id]);
-    else await connection.query('UPDATE orders SET kitchen_status = ? WHERE order_id = ?', [status, req.params.id]);
     await connection.commit();
     res.json({ message: 'Kitchen status updated.', status });
   } catch (error) { await connection.rollback(); res.status(500).json({ error: error.message }); }

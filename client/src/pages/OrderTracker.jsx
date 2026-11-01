@@ -132,8 +132,7 @@ function parseCoordinates(order) {
 }
 
 /**
- * Four possible stages returned by the backend:
- *   placed → preparing → ready / out_for_delivery → completed
+ * Customer-facing stages are derived by the backend from kitchen and delivery state.
  */
 const STEPS_DINE_TAKEOUT = [
   {
@@ -159,6 +158,33 @@ const STEPS_DINE_TAKEOUT = [
     label: 'Completed',
     icon: '🎉',
     description: 'Enjoy your meal! Thank you for dining with us.',
+  },
+];
+
+const STEPS_DINE_IN = [
+  {
+    key: 'placed',
+    label: 'Order Placed',
+    icon: '🧾',
+    description: 'Your order has been received and is being queued.',
+  },
+  {
+    key: 'preparing',
+    label: 'Being Prepared',
+    icon: '👨‍🍳',
+    description: 'Our kitchen is crafting your meal right now.',
+  },
+  {
+    key: 'meal_ready',
+    label: 'Your Meal is ready',
+    icon: '🍽️',
+    description: 'Each dish will be served to you one at a time.',
+  },
+  {
+    key: 'completed',
+    label: 'Completed',
+    icon: '🎉',
+    description: 'Delivered! Enjoy your meal. Thank you for ordering.',
   },
 ];
 
@@ -225,6 +251,7 @@ export default function OrderTracker() {
 
   const destination = parseCoordinates(statusData);
   const isDelivery = String(statusData?.order_type || '').toLowerCase() === 'delivery';
+  const isDineIn = String(statusData?.order_type || '').toLowerCase().replace(/[- ]/g, '') === 'dinein';
   useEffect(() => {
     if (!isDelivery || !['out_for_delivery', 'awaiting_delivery_otp'].includes(statusData?.stage)) {
       setTripStartedAt(null);
@@ -344,7 +371,7 @@ export default function OrderTracker() {
   }
 
   const isDeliveryFailed = isDelivery && statusData.stage === 'delivery_failed';
-  const steps = isDelivery
+  const steps = isDineIn ? STEPS_DINE_IN : isDelivery
     ? STEPS_DELIVERY.map((step) => step.key === 'completed' && isDeliveryFailed
       ? { ...step, key: 'delivery_failed', label: 'Delivery Failed', icon: 'X', description: 'Our team has been notified that delivery could not be completed.' }
       : step)
@@ -373,8 +400,8 @@ export default function OrderTracker() {
             <section className="tracker-local-status" aria-live="polite">
               <span className="tracker-local-status-icon" aria-hidden="true">{String(statusData.order_type).toLowerCase() === 'dine in' || String(statusData.order_type).toLowerCase() === 'dine-in' ? '🍽️' : '🥡'}</span>
               <div>
-                <h3>{String(statusData.order_type).toLowerCase().includes('dine') ? 'Table service status' : 'Cafe pickup status'}</h3>
-                <p>{String(statusData.order_type).toLowerCase().includes('dine') ? 'Follow your order progress here; our team will bring it to your table.' : 'Your order is being prepared at the cafe. Collect it from the counter when it is ready.'}</p>
+                <h3>{isDineIn ? (statusData.stage === 'completed' ? 'Dine-in order complete' : statusData.stage === 'meal_ready' ? 'Your Meal is ready' : 'Table service status') : statusData.stage === 'completed' ? 'Takeout pickup complete' : 'Cafe pickup status'}</h3>
+                <p>{isDineIn ? (statusData.stage === 'completed' ? 'Delivered! Enjoy your meal. Thank you for ordering.' : statusData.stage === 'meal_ready' ? 'Each dish will be served to you one at a time.' : 'Follow your order progress here; our team will bring it to your table.') : statusData.stage === 'completed' ? 'Your order has been picked up. Enjoy your meal!' : statusData.stage === 'ready' ? 'Your order is ready! Collect it from the counter.' : 'Your order is being prepared at the cafe. Collect it from the counter when it is ready.'}</p>
               </div>
             </section>
           ) : (

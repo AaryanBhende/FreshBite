@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ProductCard from './ProductCard';
 import '../assets/style/menu.css';
 
-export default function ProductGrid({ items, onSelectDish, onReviewSubmitted, horizontal = false }) {
+export default function ProductGrid({ items, onSelectDish, onReviewSubmitted, horizontal = false, gridRef }) {
   const [expandedDish, setExpandedDish] = useState(null);
   const closeExpanded = () => setExpandedDish(null);
 
@@ -33,7 +33,7 @@ export default function ProductGrid({ items, onSelectDish, onReviewSubmitted, ho
 
   return (
     <>
-      <div className={`catalog-grid${horizontal ? ' catalog-grid--horizontal' : ''}`}>
+      <div ref={gridRef} className={`catalog-grid${horizontal ? ' catalog-grid--horizontal' : ''}`}>
         {items.map((dish) => (
           <ProductCard
             key={dish.id}

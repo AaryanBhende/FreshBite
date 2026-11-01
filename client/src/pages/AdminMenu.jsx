@@ -361,7 +361,7 @@ export default function AdminMenu() {
           table_number: item.table_number,
           table_zone: item.table_zone,
           address: item.address,
-          completed: item.completed,
+          completed: Boolean(item.completed),
           kitchen_status: item.kitchen_status || 'pending',
           delivery_status: item.delivery_status,
           driver_id: item.driver_id,
@@ -375,6 +375,9 @@ export default function AdminMenu() {
       }
       const itemTotal = Number(item.price) * Number(item.quantity);
       groups[groupKey].totalAmount += itemTotal;
+      if (!item.completed) {
+        groups[groupKey].completed = false;
+      }
       if (item.kitchen_status === 'ready' || groups[groupKey].kitchen_status !== 'ready' && item.kitchen_status === 'preparing') {
         groups[groupKey].kitchen_status = item.kitchen_status;
       }
@@ -446,37 +449,13 @@ export default function AdminMenu() {
     }
   };
 
-  const handleToggleGroupCompleted = async (group) => {
-    try {
-      const newStatus = !group.completed;
-      const responses = await Promise.all(
-        group.items.map((item) =>
-          fetch(`/api/orders/${item.id}`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ ...item, completed: newStatus ? 1 : 0 }),
-          })
-        )
-      );
-      if (responses.some((response) => !response.ok)) {
-        throw new Error("One or more order items could not be updated.");
-      }
-      fetchOrders();
-    } catch (error) {
-      console.error("Failed to update group status:", error);
-    }
-  };
-
   const handleConfirmPickup = async (group) => {
     try {
       const response = await fetch(`/api/orders/${encodeURIComponent(group.order_id)}/picked-up`, {
         method: 'PUT', headers: { Authorization: `Bearer ${token}` },
       });
       const data = await readJsonResponse(response);
-      if (!response.ok) throw new Error(data.error || 'Could not confirm driver pickup.');
+      if (!response.ok) throw new Error(data.error || 'Could not confirm pickup.');
       fetchOrders();
     } catch (error) {
       window.alert(error.message);
@@ -807,20 +786,51 @@ export default function AdminMenu() {
                               group.delivery_status === 'failed' ? "admin-status--failed" : group.delivery_status === 'picked_up' || group.delivery_status === 'delivered' || group.completed || group.kitchen_status === 'ready' ? "admin-status--completed" : "admin-status--pending"
                             }`}
                           >
-                            {group.order_type === 'Delivery' ? (group.delivery_status === 'awaiting_otp' ? 'Awaiting Customer OTP' : group.delivery_status === 'picked_up' ? 'Out for Delivery' : group.delivery_status === 'delivered' ? 'Completed' : group.delivery_status === 'failed' ? 'Delivery Failed' : group.kitchen_status === 'ready' ? 'Ready for Delivery' : group.kitchen_status === 'preparing' ? 'Being Prepared' : group.delivery_status === 'accepted' ? 'Accepted · Awaiting Pickup' : 'Order Placed') : group.completed ? "Completed" : group.kitchen_status === 'ready' ? 'Ready' : group.kitchen_status === 'preparing' ? 'Preparing' : 'Pending'}
+                            {group.order_type === 'Delivery'
+                              ? (group.delivery_status === 'awaiting_otp'
+                                  ? 'Awaiting Customer OTP'
+                                  : group.delivery_status === 'picked_up'
+                                    ? 'Out for Delivery'
+                                    : group.delivery_status === 'delivered'
+                                      ? 'Completed'
+                                      : group.delivery_status === 'failed'
+                                        ? 'Delivery Failed'
+                                        : group.kitchen_status === 'ready'
+                                          ? 'Ready for Delivery'
+                                          : group.kitchen_status === 'preparing'
+                                            ? 'Being Prepared'
+                                            : group.delivery_status === 'accepted'
+                                              ? 'Accepted · Awaiting Pickup'
+                                              : 'Order Placed')
+                              : group.order_type === 'Dine In' && group.kitchen_status === 'ready'
+                                ? 'Completed'
+                              : group.order_type === 'Takeout'
+                                ? (group.completed
+                                    ? 'Completed'
+                                    : group.kitchen_status === 'ready'
+                                      ? 'Ready'
+                                      : group.kitchen_status === 'preparing'
+                                        ? 'Preparing'
+                                        : 'Pending')
+                                : group.kitchen_status === 'ready'
+                                  ? 'Ready'
+                                  : group.kitchen_status === 'preparing'
+                                    ? 'Preparing'
+                                    : group.completed
+                                      ? 'Completed'
+                                      : 'Pending'}
                           </span>
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
-                          {group.order_type === 'Delivery' && group.kitchen_status === 'ready' && group.delivery_status === 'accepted' && <button
-                            className="btn-secondary admin-btn-sm admin-btn-mark"
-                            onClick={() => handleConfirmPickup(group)}
-                          >Picked Up</button>}
-                          {group.order_type !== 'Delivery' && <button
-                            className="btn-secondary admin-btn-sm admin-btn-mark"
-                            onClick={() => handleToggleGroupCompleted(group)}
-                          >
-                            {`Mark as ${group.completed ? "Pending" : "Completed"}`}
-                          </button>}
+                          {((group.order_type === 'Delivery' && group.kitchen_status === 'ready' && group.delivery_status === 'accepted') ||
+                            (group.order_type === 'Takeout' && group.kitchen_status === 'ready' && !group.completed)) && (
+                            <button
+                              className="btn-secondary admin-btn-sm admin-btn-mark"
+                              onClick={() => handleConfirmPickup(group)}
+                            >
+                              Picked Up
+                            </button>
+                          )}
                           <button
                             className="btn-danger admin-btn-sm"
                             onClick={() => handleDeleteGroup(group)}

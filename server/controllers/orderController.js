@@ -48,7 +48,12 @@ export const getOrders = async (req, res) => {
       WHERE orders.order_id IN (${placeholders})
       ORDER BY orders.created_at DESC
       `, orderIds);
-      rows = orderRows.map(({ delivery_otp_hash, delivery_otp_expires_at, delivery_otp_attempts, ...safeRow }) => safeRow);
+      rows = orderRows.map(({ delivery_otp_hash, delivery_otp_expires_at, delivery_otp_attempts, ...safeRow }) => {
+        if (safeRow.order_type === 'Dine In' && safeRow.kitchen_status === 'ready') {
+          safeRow.completed = 1;
+        }
+        return safeRow;
+      });
     }
     const total = Number(countRow?.total || 0);
     res.json({
@@ -79,11 +84,26 @@ export const markDeliveryPickedUp = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [rows] = await connection.query('SELECT order_type, kitchen_status, delivery_status FROM orders WHERE order_id = ? FOR UPDATE', [req.params.orderId]);
-    if (!rows.length) { await connection.rollback(); return res.status(404).json({ error: 'Delivery order not found.' }); }
+    const [rows] = await connection.query('SELECT order_type, kitchen_status, delivery_status, completed FROM orders WHERE order_id = ? FOR UPDATE', [req.params.orderId]);
+    if (!rows.length) { await connection.rollback(); return res.status(404).json({ error: 'Order not found.' }); }
     const order = rows[0];
-    if (order.order_type !== 'Delivery') { await connection.rollback(); return res.status(400).json({ error: 'Pickup confirmation is only available for delivery orders.' }); }
-    if (order.kitchen_status !== 'ready') { await connection.rollback(); return res.status(409).json({ error: 'The kitchen must mark this order ready before pickup.' }); }
+    if (!['Delivery', 'Takeout'].includes(order.order_type)) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Pickup confirmation is only available for delivery or takeout orders.' });
+    }
+    if (order.kitchen_status !== 'ready') {
+      await connection.rollback();
+      return res.status(409).json({ error: 'The kitchen must mark this order ready before pickup.' });
+    }
+    if (order.order_type === 'Takeout') {
+      if (order.completed) {
+        await connection.rollback();
+        return res.json({ message: 'Takeout pickup was already confirmed.', status: 'completed' });
+      }
+      await connection.query('UPDATE orders SET completed = 1 WHERE order_id = ?', [req.params.orderId]);
+      await connection.commit();
+      return res.json({ message: 'Takeout pickup confirmed.', status: 'completed' });
+    }
     if (order.delivery_status === 'picked_up') { await connection.rollback(); return res.json({ message: 'Pickup was already confirmed.', status: 'picked_up' }); }
     if (order.delivery_status !== 'accepted') { await connection.rollback(); return res.status(409).json({ error: 'The assigned driver must accept this delivery before pickup can be confirmed.' }); }
     await connection.query("UPDATE orders SET delivery_status = 'picked_up' WHERE order_id = ?", [req.params.orderId]);
@@ -413,10 +433,13 @@ export const updateOrder = async (req, res) => {
   } = req.body;
 
   try {
-    const [existing] = await pool.query('SELECT order_type FROM orders WHERE id = ?', [id]);
+    const [existing] = await pool.query('SELECT order_type, kitchen_status FROM orders WHERE id = ?', [id]);
     if (existing[0]?.order_type === 'Delivery') {
       return res.status(400).json({ error: 'Delivery orders must be assigned and completed through the driver workflow.' });
     }
+    const computedCompleted = existing[0]?.order_type !== 'Delivery'
+      ? (existing[0]?.kitchen_status === 'ready' ? 1 : 0)
+      : (completed ? 1 : 0);
     await pool.query(
       `UPDATE orders 
        SET order_id=?, user_id=?, title=?, category=?, price=?, quantity=?, notes=?, completed=?, order_type=?, address=?, coordinates=?, table_id=?
@@ -429,7 +452,7 @@ export const updateOrder = async (req, res) => {
         price,
         quantity,
         notes || '',
-        completed ? 1 : 0,
+        computedCompleted,
         order_type || 'Dine In',
         address || null,
         coordinates || null,
@@ -462,7 +485,7 @@ export const getUserOrders = async (req, res) => {
     // Fetch all rows for this user, newest group first (idx_orders_created)
     const [rows] = await pool.query(
       `SELECT o.id, o.order_id, o.title, o.category, o.price, o.quantity, o.notes, o.completed, o.created_at, o.order_type, o.address, o.coordinates, o.table_id, o.kitchen_status,
-              o.delivery_status, o.driver_id, o.delivery_failure_reason,
+              o.delivery_status, o.driver_id, o.delivery_failure_reason, o.is_cooked,
               t.table_number, t.zone AS table_zone
        FROM orders o
        LEFT JOIN \`tables\` t ON o.table_id = t.id
@@ -484,6 +507,7 @@ export const getUserOrders = async (req, res) => {
           table_zone: row.table_zone,
           created_at: row.created_at,
           completed: Boolean(row.completed),
+          is_cooked: Boolean(row.is_cooked),
           kitchen_status: row.kitchen_status,
           items: [],
         });
@@ -503,6 +527,7 @@ export const getUserOrders = async (req, res) => {
         quantity: row.quantity,
         notes: row.notes,
         completed: Boolean(row.completed),
+        is_cooked: Boolean(row.is_cooked),
       });
     }
 
@@ -515,14 +540,25 @@ export const getUserOrders = async (req, res) => {
               : group.delivery_status === 'failed' ? 'delivery_failed'
                 : group.kitchen_status === 'ready' ? 'ready'
                   : group.kitchen_status === 'preparing' ? 'preparing' : 'placed';
-      } else if (group.completed) {
+      } else if (group.order_type === 'Takeout') {
+        group.stage = group.completed ? 'completed'
+          : group.kitchen_status === 'ready' ? 'ready'
+            : group.kitchen_status === 'preparing' ? 'preparing'
+              : ageMinutes >= 20 ? 'ready'
+                : ageMinutes >= 5 ? 'preparing' : 'placed';
+      } else if (group.order_type === 'Dine In' && (group.kitchen_status === 'ready' || group.completed)) {
         group.stage = 'completed';
+        group.completed = true;
+      } else if (group.order_type === 'Dine In' && group.items.some((item) => item.is_cooked)) {
+        group.stage = 'meal_ready';
       } else if (group.kitchen_status === 'ready') {
         group.stage = 'ready';
+      } else if (group.completed) {
+        group.stage = 'completed';
       } else if (group.kitchen_status === 'preparing') {
         group.stage = 'preparing';
       } else if (ageMinutes >= 20) {
-        group.stage = group.order_type === 'Delivery' ? 'out_for_delivery' : 'ready';
+        group.stage = 'ready';
       } else if (ageMinutes >= 5) {
         group.stage = 'preparing';
       } else {
@@ -543,7 +579,7 @@ export const getOrderStatus = async (req, res) => {
   const userId = req.user.id;
   try {
     const [rows] = await pool.query(
-      `SELECT o.id, o.order_id, o.title, o.completed, o.created_at, o.order_type, o.coordinates, o.address, o.table_id, o.kitchen_status,
+      `SELECT o.id, o.order_id, o.title, o.completed, o.is_cooked, o.created_at, o.order_type, o.coordinates, o.address, o.table_id, o.kitchen_status,
               o.delivery_status, o.driver_id, o.delivery_failure_reason,
               t.table_number, t.zone AS table_zone
        FROM orders o LEFT JOIN \`tables\` t ON o.table_id = t.id
@@ -555,7 +591,10 @@ export const getOrderStatus = async (req, res) => {
       return res.status(404).json({ error: 'Order not found.' });
     }
 
-    const allCompleted = rows.every((r) => r.completed);
+    let allCompleted = rows.every((r) => Boolean(r.completed));
+    if (rows[0].order_type === 'Dine In' && rows.some((r) => r.kitchen_status === 'ready')) {
+      allCompleted = true;
+    }
     const orderType = rows[0].order_type;
     const createdAt = rows[0].created_at;
 
@@ -568,10 +607,31 @@ export const getOrderStatus = async (req, res) => {
       stage = deliveryStatus === 'awaiting_otp' ? 'awaiting_delivery_otp'
         : deliveryStatus === 'picked_up' ? 'out_for_delivery'
         : deliveryStatus === 'delivered' ? 'completed' : 'delivery_failed';
-    } else if (allCompleted && orderType !== 'Delivery') stage = 'completed';
-    else if (rows.some((r) => r.kitchen_status === 'ready')) stage = 'ready';
-    else if (rows.some((r) => r.kitchen_status === 'preparing')) stage = 'preparing';
-    else if (orderType === 'Delivery') {
+    } else if (orderType === 'Takeout') {
+      if (allCompleted) {
+        stage = 'completed';
+      } else if (rows.some((r) => r.kitchen_status === 'ready')) {
+        stage = 'ready';
+      } else if (rows.some((r) => r.kitchen_status === 'preparing')) {
+        stage = 'preparing';
+      } else if (ageMinutes >= 20) {
+        stage = 'ready';
+      } else if (ageMinutes >= 5) {
+        stage = 'preparing';
+      } else {
+        stage = 'placed';
+      }
+    } else if (orderType === 'Dine In' && rows.some((r) => r.kitchen_status === 'ready')) {
+      stage = 'completed';
+    } else if (orderType === 'Dine In' && rows.some((r) => r.is_cooked)) {
+      stage = 'meal_ready';
+    } else if (rows.some((r) => r.kitchen_status === 'ready')) {
+      stage = 'ready';
+    } else if (allCompleted && orderType !== 'Delivery') {
+      stage = 'completed';
+    } else if (rows.some((r) => r.kitchen_status === 'preparing')) {
+      stage = 'preparing';
+    } else if (orderType === 'Delivery') {
       stage = 'placed';
     } else if (ageMinutes >= 20) {
       stage = orderType === 'Delivery' ? 'out_for_delivery' : 'ready';
@@ -594,7 +654,7 @@ export const getOrderStatus = async (req, res) => {
       table_zone: rows[0].table_zone,  
       stage,
       created_at: createdAt,
-      items: rows.map((r) => ({ id: r.id, title: r.title, completed: Boolean(r.completed) })),
+      items: rows.map((r) => ({ id: r.id, title: r.title, completed: Boolean(r.completed), is_cooked: Boolean(r.is_cooked) })),
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

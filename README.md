@@ -6,11 +6,11 @@ FreshBite is a full-stack restaurant and cafe web application that supports onli
 
 ## Key Features
 
-- **Customer Experience:** Browse menu items, apply promotions, track orders in real time, place dine-in table reservations, rate items, and submit contact or order-issue reports.
+- **Customer Experience:** Browse menu items, apply promotions, track orders in real time, place dine-in table reservations, rate items, and submit contact or order-issue reports. Personalised recommendations appear in an arrow-navigated horizontal strip (native scrollbar hidden; `‹`/`›` buttons scroll by one card with smooth behavior and auto-hide when there is nothing left to scroll).
 - **Role-Based Access:** Dedicated dashboards for Customers, Admins, Delivery Drivers, and Kitchen Staff.
-- **Kitchen Display System (KDS):** Real-time order management for kitchen staff, supporting order bumping, availability toggles, and paginated delivered history.
+- **Kitchen Display System (KDS):** Real-time order management for kitchen staff, supporting order bumping, availability toggles, automated ready status transitions for Takeout and Dine-in orders, and paginated delivered history.
 - **Driver Delivery Workflow:** Automatic driver assignment, kitchen preparation, admin-confirmed pickup, and customer-confirmed delivery using a driver-generated four-digit OTP. Codes expire after five minutes and can be regenerated; only a verified code completes delivery. Assigned deliveries include a Google Maps route overview and driver earnings analytics.
-- **Admin Management Panel:** Comprehensive tools for menu item CRUD, promotional announcements, employee management (drivers & kitchen staff), user segmentation (CRM), review moderation, and dashboard tracking of active pending deliveries.
+- **Admin Management Panel:** Comprehensive tools for menu item CRUD, promotional announcements, employee management (drivers & kitchen staff), user segmentation (CRM), review moderation, Takeout pickup confirmation, automated order status tracking, and dashboard tracking of active pending deliveries.
 - **Interactive Seating Map:** Shared, visual table availability and floor layout (Patio, Indoor, Bar) for customers and admins.
 
 ---
