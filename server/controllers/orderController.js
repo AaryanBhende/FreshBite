@@ -237,6 +237,7 @@ export const updateDriverDelivery = async (req, res) => {
 // CREATE order(s) - Optimized for <200ms response time
 export const createOrder = async (req, res) => {
   const items = Array.isArray(req.body) ? req.body : (req.body.items || [req.body]);
+  const orderUserId = req.user?.id || null;
   const promotionCode = Array.isArray(req.body) ? '' : String(req.body.promo_code || req.body.promotion_code || '').trim().toUpperCase();
   const tipPercent = Array.isArray(req.body) ? 0 : Number(req.body.tip_percent || 0);
 
@@ -281,7 +282,7 @@ export const createOrder = async (req, res) => {
     const values = items.map((item, index) => [
       item.id,
       item.order_id,
-      item.user_id || null,
+      orderUserId,
       item.title,
       item.category || 'None',
       item.price,
@@ -363,7 +364,7 @@ export const createOrder = async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ error: 'Promotion is invalid, expired, unavailable, or the minimum order was not met.' });
       }
-      const userId = items[0].user_id || null;
+      const userId = orderUserId;
       if (userId) {
         const [uses] = await connection.query(
           'SELECT 1 FROM order_promotions WHERE promotion_id = ? AND user_id = ? LIMIT 1',

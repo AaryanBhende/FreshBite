@@ -687,6 +687,45 @@
   width: 100%;
 }
 
+.guest-checkout-backdrop { padding: 1rem; }
+.guest-checkout-modal { box-sizing: border-box; max-width: 440px; }
+.guest-checkout-modal h3 { margin: 0 0 .6rem; color: #26392d; }
+.guest-checkout-modal p { margin: 0; color: #5e695f; line-height: 1.5; }
+.guest-checkout-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: .65rem;
+  margin-top: 1.2rem;
+}
+.guest-checkout-actions button {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: .55rem .4rem;
+  font-size: .88rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.guest-checkout-modal .dine-seating-close {
+  min-height: 40px;
+  margin: 1rem auto 0;
+  padding: .45rem 1rem;
+  border: 1px solid #9a9a9a;
+  border-radius: 7px;
+  background: #f5f5f5;
+  color: #555;
+  transition: color .2s ease, background-color .2s ease, border-color .2s ease;
+}
+.guest-checkout-modal .dine-seating-close:hover,
+.guest-checkout-modal .dine-seating-close:focus-visible {
+  border-color: #000;
+  background: #000;
+  color: #fff;
+}
+.guest-checkout-modal .dine-seating-close:focus-visible { outline: 3px solid #777; outline-offset: 2px; }
+
 .dine-seating-backdrop { padding: 1rem; }
 .dine-seating-modal {
   box-sizing: border-box;

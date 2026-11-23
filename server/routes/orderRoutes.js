@@ -9,7 +9,7 @@ import {
   markDeliveryFailureRead, markDeliveryPickedUp, getDriverOrders, getDriverAnalytics, updateDriverDelivery,
   generateDeliveryOtp, verifyDeliveryOtp,
 } from '../controllers/orderController.js';
-import { verifyToken, verifyAdmin, verifyDriver } from '../middleware/authMiddleware.js';
+import { verifyToken, verifyAdmin, verifyDriver, optionalAuth } from '../middleware/authMiddleware.js';
 import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
@@ -22,7 +22,7 @@ router.get('/driver/analytics', verifyDriver, getDriverAnalytics);
 router.get('/driver/assigned', verifyDriver, getDriverOrders);
 router.post('/driver/:orderId/delivery-otp', verifyDriver, asyncHandler(generateDeliveryOtp));
 router.put('/driver/:orderId/status', verifyDriver, asyncHandler(updateDriverDelivery));
-router.post('/', asyncHandler(createOrder));
+router.post('/', optionalAuth, asyncHandler(createOrder));
 router.put('/:id', verifyAdmin, updateOrder);
 router.delete('/:id', verifyAdmin, deleteOrder);
 

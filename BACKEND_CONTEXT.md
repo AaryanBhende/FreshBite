@@ -66,7 +66,7 @@ All endpoints below include the `/api` prefix.
 | Menu | `GET /menu`, `GET /menu/favorites` | Public |
 | Menu | `PUT /menu/:id/favorite`, `POST /menu`, `PUT /menu/:id`, `DELETE /menu/:id` | Admin required; menu writes accept multipart `image` where applicable |
 | Menu | `PUT /menu/:id/availability` | Admin or kitchen role; toggles `menu_items.is_available` |
-| Orders | `POST /orders` | Currently public (no auth middleware on route); optional item `table_id` is validated and persisted for dine-in linking; delivery orders are atomically assigned an available driver or return 409 |
+| Orders | `POST /orders` | Public with optional JWT authentication; order `user_id` comes only from the verified token and is null for guests; optional item `table_id` is validated and persisted for dine-in linking; delivery orders are atomically assigned an available driver or return 409 |
 | Orders | `GET /orders?page=N&limit=10`, `PUT /orders/:id`, `DELETE /orders/:id` | Admin required; list is paginated by distinct order group |
 | Orders | `GET /orders/user`, `GET /orders/status/:orderId` | JWT required; defined before wildcard routes; grouped results include a derived stage |
 | Orders | `PUT /orders/:orderId/failure-read`, `PUT /orders/:orderId/picked-up` | Admin required; marks a failed delivery notification read or confirms an accepted, kitchen-ready driver pickup (Delivery) or customer pickup (Takeout) |
@@ -91,7 +91,7 @@ All endpoints below include the `/api` prefix.
 | Rush | `GET /rush` | Public |
 | Rush | `PUT /rush/override` | Admin required |
 | Contact | `POST /contact` | Public; expects `name`, `email`, `message` |
-| Contact | `POST /contact/order-issue` | JWT required; verifies `order_id` belongs to the caller and accepts `issue_tag` plus optional `message` (max 2000 chars); sends a red-accented HTML/text email through the existing SMTP contact transport |
+| Contact | `POST /contact/order-issue` | JWT required; verifies `order_id` belongs to the caller, rejects missing/invalid or 7-day-old orders, and accepts `issue_tag` plus optional `message` (max 2000 chars); sends a red-accented HTML/text email through the existing SMTP contact transport |
 | Contact | `GET /contact/mailtrap` | Admin required; reads Mailtrap configuration from environment |
 
 ## Route-to-controller layout
@@ -128,7 +128,7 @@ The API continues to return `stage: 'delivery_failed'` when a delivery fails. In
 
 `GET /api/orders/driver/analytics` summarizes completed deliveries for the authenticated driver, including total completed deliveries, earnings, delivery fees, tips, average tip, and daily/weekly aggregates. `POST /api/orders` calculates delivery fees from destination coordinates (₹30 base, plus ₹5/km beyond 3 km) and calculates tip from the allowed 0%, 10%, or 20% of the food subtotal; it validates any client-supplied `tip_amount`. Success includes `delivery_fee`, `tip_amount`, and `total`.
 
-`POST /api/contact/order-issue` accepts only `Order not delivered`, `Missing/destroyed one or more item`, or `Wrong order` as `issue_tag`. It sends the authenticated customer's report using an HTML email with red issue styling and the existing SMTP transport; order ownership is checked before sending.
+`POST /api/contact/order-issue` accepts only `Order not delivered`, `Missing/destroyed one or more item`, or `Wrong order` as `issue_tag`. It sends the authenticated customer's report using an HTML email with red issue styling and the existing SMTP transport; order ownership and a valid `created_at` less than seven days old are checked before sending. Orders at least seven days old are rejected with HTTP 403 and `{ error }`.
 
 Kitchen routes are all protected by `verifyKitchen`; the frontend `/kitchen` and `/kitchen/history` pages also apply a kitchen-role route guard. `GET /api/kds/orders` returns active, incomplete tickets in pending/preparing states and supports the dashboard's order-type filter; `GET /api/kds/history` returns recent ready/completed tickets for Recall (excluding delivered deliveries). `GET /api/kds/delivered?page=N` returns delivered orders chronologically with a fixed page size of 20 and pagination metadata `{ orders, page, limit, total, totalPages }`. `PUT /api/kds/orders/:id/status` accepts `preparing` or `ready`, and refuses to mark an order ready while a dine-in item remains uncooked. Marking a Dine-in order ready in KDS automatically sets `completed = 1`; marking a Takeout order ready sets `kitchen_status = 'ready'`, awaiting admin pickup confirmation to set `completed = 1`; moving an order back to `preparing` resets `completed = 0`. Ticket rows expose kitchen status and item cooked state. Navbar active highlighting for the Kitchen link is client-side route state on `/kitchen` and does not change API authorization. The mobile drawer exposes the active KDS page and History links to kitchen users; this navigation change adds no backend endpoint or authorization exception. Menu availability is a separate admin/kitchen control; public menu reads expose `is_available`, and order creation rejects unavailable menu items.
 
@@ -138,7 +138,7 @@ Employee management uses the existing `users` table and roles. Public registrati
 
 The reservation creation route uses `optionalAuth`, so the backend still permits guest requests; the current `Reservations.jsx` customer page requires sign-in before submission. `createReservation` checks the chosen table, capacity, and overlapping one-hour reservation inside a transaction, then stores the booking as Confirmed.
 
-Dine-in orders may include `table_id` per line item. `createOrder` verifies that referenced table IDs exist and that a grouped order does not mix tables, stores the foreign key, and order read endpoints resolve `table_number` and `table_zone`. The route remains public as before. The Menu checkout uses the authenticated reservation endpoint to create a table reservation when the customer chooses a new table; if subsequent order placement fails, it requests owner-authorized cancellation.
+Dine-in orders may include `table_id` per line item. `createOrder` verifies that referenced table IDs exist and that a grouped order does not mix tables, stores the foreign key, and order read endpoints resolve `table_number` and `table_zone`. `POST /orders` remains available to guests and uses optional JWT authentication to associate signed-in orders with the token owner; client-supplied `user_id` values are ignored. Menu checkout allows guest dine-in orders and guest table reservations (name/email are required by reservation creation); an authenticated reservation is cancelled by its owner if subsequent order placement fails.
 
 The driver movement and arrival notice are currently simulated in the browser and stored in localStorage for 45 seconds after the client observes `out_for_delivery`; the backend does not receive GPS or a separate driver-arrival event. Do not describe these as server-tracked or real-time GPS data.
 

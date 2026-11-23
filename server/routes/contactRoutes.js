@@ -36,6 +36,7 @@ const buildContactEmail = ({ name, email, message }) => {
 };
 
 const ORDER_ISSUE_TAGS = ['Order not delivered', 'Missing/destroyed one or more item', 'Wrong order'];
+const ORDER_ISSUE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const buildOrderIssueEmail = ({ name, email, orderId, issueTag, message }) => {
   const safeName = escapeHtml(name);
@@ -90,11 +91,15 @@ router.post('/order-issue', verifyToken, async (req, res) => {
   }
   try {
     const [[order]] = await pool.query(
-      `SELECT o.order_id, u.name, u.email FROM orders o
+      `SELECT o.order_id, o.created_at, u.name, u.email FROM orders o
        JOIN users u ON u.id = o.user_id WHERE o.order_id = ? AND o.user_id = ? LIMIT 1`,
       [orderId, req.user.id]
     );
     if (!order) return res.status(404).json({ error: 'Order not found.' });
+    const placedAt = new Date(order.created_at).getTime();
+    if (!Number.isFinite(placedAt) || Date.now() - placedAt >= ORDER_ISSUE_WINDOW_MS) {
+      return res.status(403).json({ error: 'Order issue reports must be submitted within 7 days of placing the order.' });
+    }
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: process.env.SMTP_PORT,

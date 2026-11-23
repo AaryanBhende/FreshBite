@@ -24,11 +24,57 @@ function calcGroupTotal(items) {
   return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function recordYearMonth(value) {
+  if (!value) return null;
+  // Date-only values are parsed as local calendar dates to avoid UTC shifting the month.
+  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) return { year: Number(dateOnly[1]), month: Number(dateOnly[2]) };
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
+function HistoryFilters({ records, dateField, month, year, onMonthChange, onYearChange, label }) {
+  const recentYears = Array.from({ length: 6 }, (_, index) => new Date().getFullYear() - index);
+  const years = [...new Set([...recentYears, ...records.map((record) => recordYearMonth(record[dateField])?.year).filter(Boolean)])]
+    .sort((a, b) => b - a);
+  const active = month !== 'all' || year !== 'all';
+  return (
+    <div className="profile-history-filters" aria-label={`${label} filters`}>
+      <div className="profile-history-filter">
+        <label htmlFor={`${label}-month`}>Month</label>
+        <select id={`${label}-month`} value={month} onChange={(event) => onMonthChange(event.target.value)}>
+          <option value="all">All Months</option>
+          {MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
+        </select>
+      </div>
+      <div className="profile-history-filter">
+        <label htmlFor={`${label}-year`}>Year</label>
+        <select id={`${label}-year`} value={year} onChange={(event) => onYearChange(event.target.value)}>
+          <option value="all">All Years</option>
+          {years.map((value) => <option key={value} value={value}>{value}</option>)}
+        </select>
+      </div>
+      {active && <button className="profile-filter-clear" type="button" onClick={() => { onMonthChange('all'); onYearChange('all'); }}>Clear Filters</button>}
+    </div>
+  );
+}
+
+function filterByMonthYear(records, dateField, month, year) {
+  return records.filter((record) => {
+    const date = recordYearMonth(record[dateField]);
+    return date && (month === 'all' || date.month === Number(month)) && (year === 'all' || date.year === Number(year));
+  });
+}
+
 // ─── Order History tab ───────────────────────────────────────
 function OrderHistory({ token, onReorder }) {
   const [orders, setOrders]     = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
+  const [month, setMonth] = useState('all');
+  const [year, setYear] = useState('all');
 
   useEffect(() => {
     fetchOrders();
@@ -88,10 +134,14 @@ function OrderHistory({ token, onReorder }) {
     );
   }
 
+  const filteredOrders = filterByMonthYear(orders, 'created_at', month, year);
+
   return (
     <div className="profile-card">
       <h2>Order History</h2>
-      {orders.map((group) => {
+      <HistoryFilters records={orders} dateField="created_at" month={month} year={year} onMonthChange={setMonth} onYearChange={setYear} label="orders" />
+      {(month !== 'all' || year !== 'all') && <p className="profile-filter-count" role="status">{filteredOrders.length} matching {filteredOrders.length === 1 ? 'order' : 'orders'}</p>}
+      {filteredOrders.length === 0 ? <div className="order-history-empty"><p>No orders match these filters.</p></div> : filteredOrders.map((group) => {
         const total = calcGroupTotal(group.items);
         return (
           <div className="order-group" key={group.order_id}>
@@ -171,6 +221,8 @@ function UserReservations({ token }) {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [month, setMonth] = useState('all');
+  const [year, setYear] = useState('all');
 
   useEffect(() => {
     fetchReservations();
@@ -230,6 +282,8 @@ function UserReservations({ token }) {
     );
   }
 
+  const filteredReservations = filterByMonthYear(reservations, 'reservation_date', month, year);
+
   return (
     <div className="profile-card">
       <div className="profile-reservation-heading">
@@ -238,7 +292,9 @@ function UserReservations({ token }) {
           + Book New Table
         </Link>
       </div>
-      {reservations.map((r) => (
+      <HistoryFilters records={reservations} dateField="reservation_date" month={month} year={year} onMonthChange={setMonth} onYearChange={setYear} label="reservations" />
+      {(month !== 'all' || year !== 'all') && <p className="profile-filter-count" role="status">{filteredReservations.length} matching {filteredReservations.length === 1 ? 'reservation' : 'reservations'}</p>}
+      {filteredReservations.length === 0 ? <div className="order-history-empty"><p>No reservations match these filters.</p></div> : filteredReservations.map((r) => (
         <div className="order-group" key={r.id}>
           <div className="order-group-header">
             <div className="order-group-meta">

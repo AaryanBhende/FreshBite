@@ -8,6 +8,12 @@ import '../assets/style/profile.css';
 
 const miramarLocation = [15.4800, 73.8080];
 const ORDER_ISSUE_TAGS = ['Order not delivered', 'Missing/destroyed one or more item', 'Wrong order'];
+const ORDER_ISSUE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function canReportOrderIssue(createdAt, now = Date.now()) {
+  const placedAt = new Date(createdAt).getTime();
+  return Number.isFinite(placedAt) && now - placedAt < ORDER_ISSUE_WINDOW_MS;
+}
 
 function DeliveryMap({ destination, address, showDriver, tripStartedAt, orderId }) {
   const { isLoaded, loadError } = useLoadScript({
@@ -371,6 +377,7 @@ export default function OrderTracker() {
   }
 
   const isDeliveryFailed = isDelivery && statusData.stage === 'delivery_failed';
+  const orderIssueAllowed = canReportOrderIssue(statusData.created_at);
   const steps = isDineIn ? STEPS_DINE_IN : isDelivery
     ? STEPS_DELIVERY.map((step) => step.key === 'completed' && isDeliveryFailed
       ? { ...step, key: 'delivery_failed', label: 'Delivery Failed', icon: 'X', description: 'Our team has been notified that delivery could not be completed.' }
@@ -485,7 +492,7 @@ export default function OrderTracker() {
             </div>
           )}
 
-          <section className="tracker-issue-section" aria-label="Report an order issue">
+          {orderIssueAllowed && <section className="tracker-issue-section" aria-label="Report an order issue">
             <div><h3>Need help with this order?</h3><p>Send our team an issue report and we’ll follow up.</p></div>
             {!issueFormOpen && <button type="button" className="tracker-issue-button" onClick={() => { setIssueError(''); setIssueFormOpen(true); }}>Report Order Issues</button>}
             {issueFeedback && <p className="tracker-issue-success" role="status">{issueFeedback}</p>}
@@ -500,7 +507,7 @@ export default function OrderTracker() {
               <textarea id="order-issue-message" rows="3" maxLength="2000" value={issueMessage} onChange={(event) => setIssueMessage(event.target.value)} placeholder="Tell us a little more about the issue." />
               <div className="tracker-issue-actions"><button type="submit" className="tracker-issue-button" disabled={issueSending || !issueTag}>{issueSending ? 'Sending…' : 'Send report'}</button><button type="button" className="tracker-issue-cancel" onClick={() => setIssueFormOpen(false)}>Cancel</button></div>
             </form>}
-          </section>
+          </section>}
 
           <Link to="/profile" className="tracker-back-btn">
             ← Back to Profile

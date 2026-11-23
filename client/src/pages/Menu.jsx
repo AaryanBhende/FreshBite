@@ -68,6 +68,9 @@ export default function Menu() {
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGuestCheckoutChoice, setShowGuestCheckoutChoice] = useState(false);
+  const [guestDineInCheckout, setGuestDineInCheckout] = useState(false);
+  const [resumeOrderAfterAuth, setResumeOrderAfterAuth] = useState(false);
   const [showDineSeatingModal, setShowDineSeatingModal] = useState(false);
   const [showDineReservationModal, setShowDineReservationModal] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -86,12 +89,15 @@ export default function Menu() {
   const [reservationDate, setReservationDate] = useState(getDefaultReservationDate);
   const [reservationSlot, setReservationSlot] = useState(getDefaultReservationSlot);
   const [reservationGuests, setReservationGuests] = useState(1);
+  const [guestReservationName, setGuestReservationName] = useState('');
+  const [guestReservationEmail, setGuestReservationEmail] = useState('');
   const [selectedReservationTable, setSelectedReservationTable] = useState(null);
   const [loadingDineTables, setLoadingDineTables] = useState(false);
   const [dineInFeedback, setDineInFeedback] = useState('');
   const formRef = useRef(null);
   const summaryRef = useRef(null);
   const recScrollRef = useRef(null);
+  const resumeAfterAuthRef = useRef(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -408,15 +414,20 @@ export default function Menu() {
       setDineInFeedback('');
       setShowDineSeatingModal(true);
     } else {
+      setGuestDineInCheckout(false);
       setDineInMode('');
       setDineInTable(null);
       setSelectedReservationTable(null);
     }
   };
 
-  const handlePlaceOrderClick = async () => {
+  const handlePlaceOrderClick = async ({ asGuest = false } = {}) => {
     if (cart.length === 0) return;
-    if (!user) {
+    if ((!user || !token) && orderType === 'Dine In' && !asGuest && !guestDineInCheckout) {
+      setShowGuestCheckoutChoice(true);
+      return;
+    }
+    if ((!user || !token) && orderType !== 'Dine In') {
       setShowAuthModal(true);
       return;
     }
@@ -429,7 +440,7 @@ export default function Menu() {
       try {
         const response = await fetch('/api/promotions/validate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ promo_code: promotionCode, cart_total: totalBill, user_id: user.id }),
+          body: JSON.stringify({ promo_code: promotionCode, cart_total: totalBill, user_id: user?.id || null }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not validate promotion.');
@@ -448,19 +459,27 @@ export default function Menu() {
     }
   };
 
+  useEffect(() => {
+    if (!resumeOrderAfterAuth || !user || !token) return;
+    setResumeOrderAfterAuth(false);
+    handlePlaceOrderClick();
+  }, [resumeOrderAfterAuth, user, token]);
+
   const executeOrderPlacement = async () => {
     setShowConfirmModal(false);
     setIsPlacingOrder(true);
     let reservationId = null;
     try {
       if (orderType === 'Dine In' && dineInMode === 'reserve') {
-        if (!token || !user?.email) throw new Error('Please sign in again before reserving a table.');
+        const guestName = user?.name || guestReservationName.trim();
+        const guestEmail = user?.email || guestReservationEmail.trim();
+        if (!guestName || !guestEmail) throw new Error('Enter your name and email to reserve a table as a guest.');
         const reservationResponse = await fetch('/api/reservations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json', ...(user && token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({
-            guest_name: user.name,
-            guest_email: user.email,
+            guest_name: guestName,
+            guest_email: guestEmail,
             reservation_date: reservationDate,
             time_slot: reservationSlot,
             party_size: reservationGuests,
@@ -477,7 +496,6 @@ export default function Menu() {
       const payload = cart.map((item) => ({
         id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         order_id: groupOrderId,
-        user_id: user ? user.id : 'Guest',
         title: item.title,
         category: item.category,
         price: item.price,
@@ -498,7 +516,7 @@ export default function Menu() {
       }));
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(user && token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ items: payload, promo_code: promotion?.code || '',
           delivery_fee: deliveryFee, tip_percent: orderType === 'Delivery' ? tipPercent : 0,
           tip_amount: orderType === 'Delivery' ? tipAmount : 0 }),
@@ -512,12 +530,13 @@ export default function Menu() {
       setDineInMode('');
       setDineInTable(null);
       setSelectedReservationTable(null);
+      setGuestDineInCheckout(false);
       localStorage.removeItem('freshbite_cart');
       setLastOrderId(groupOrderId);
       fetchOrders();
       setShowSuccessModal(true);
     } catch (err) {
-      if (reservationId && token) {
+      if (reservationId && user && token) {
         try {
           await fetch(`/api/reservations/${encodeURIComponent(reservationId)}/cancel`, {
             method: 'PUT',
@@ -960,7 +979,28 @@ export default function Menu() {
         </div>
       )}
 
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => { setShowAuthModal(false); resumeAfterAuthRef.current = false; }}
+        onAuthenticated={() => {
+          setShowAuthModal(false);
+          if (resumeAfterAuthRef.current) setResumeOrderAfterAuth(true);
+          resumeAfterAuthRef.current = false;
+        }}
+      />
+
+      {showGuestCheckoutChoice && (
+        <div className="modal-backdrop guest-checkout-backdrop" onClick={() => setShowGuestCheckoutChoice(false)}>
+          <div className="modal-content guest-checkout-modal" role="dialog" aria-modal="true" aria-labelledby="guest-checkout-title" onClick={(event) => event.stopPropagation()}>
+            <h3 id="guest-checkout-title">How would you like to continue?</h3>
+            <p>You can place this dine-in order as a guest or sign in to your account.</p>
+            <div className="modal-actions guest-checkout-actions">
+              <button type="button" className="btn-primary" onClick={() => { setGuestDineInCheckout(true); setShowGuestCheckoutChoice(false); handlePlaceOrderClick({ asGuest: true }); }}>Continue as Guest</button>
+              <button type="button" className="btn-secondary" onClick={() => { resumeAfterAuthRef.current = true; setShowGuestCheckoutChoice(false); setShowAuthModal(true); }}>Log In / Sign Up</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDineSeatingModal && (
         <div className="modal-backdrop dine-seating-backdrop">
@@ -992,6 +1032,7 @@ export default function Menu() {
                   setDineInMode('seated');
                   setShowDineSeatingModal(false);
                   setDineInFeedback('');
+                  if (guestDineInCheckout) setShowConfirmModal(true);
                 }}
               >
                 Use this table
@@ -1021,6 +1062,16 @@ export default function Menu() {
           <div className="modal-content dine-map-modal" role="dialog" aria-modal="true" aria-labelledby="dine-map-title">
             <h3 id="dine-map-title">Reserve a table for your dine-in order</h3>
             <div className="dine-reservation-fields">
+              {!user && <>
+                <label>
+                  Your name
+                  <input type="text" value={guestReservationName} onChange={(event) => setGuestReservationName(event.target.value)} autoComplete="name" required />
+                </label>
+                <label>
+                  Your email
+                  <input type="email" value={guestReservationEmail} onChange={(event) => setGuestReservationEmail(event.target.value)} autoComplete="email" required />
+                </label>
+              </>}
               <label>
                 Reservation date
                 <input
@@ -1063,6 +1114,10 @@ export default function Menu() {
                 className="btn-primary"
                 disabled={!selectedReservationTable || !reservationGuests || reservationGuests < 1 || reservationGuests > (selectedReservationTable?.capacity || 0) || loadingDineTables}
                 onClick={() => {
+                  if (!user && (!guestReservationName.trim() || !guestReservationEmail.trim())) {
+                    setDineInFeedback('Enter your name and email to reserve a table as a guest.');
+                    return;
+                  }
                   setDineInTable(selectedReservationTable);
                   setDineInMode('reserve');
                   setShowDineReservationModal(false);
