@@ -18,6 +18,7 @@
 .kds-order-meta { padding: 0 1rem .8rem; color: #748078; font-size: .88rem; }
 .kds-items { border-top: 1px solid #edf1ee; }.kds-item { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .9rem 1rem; border-bottom: 1px solid #edf1ee; }.kds-note { margin-top: .35rem; color: #9a4e1d; font-size: .88rem; }
 .kds-bump, .kds-order-actions button { border: 0; border-radius: 9px; padding: .65rem .9rem; background: #e9f3ec; color: #205d39; font-weight: 750; cursor: pointer; white-space: nowrap; }.kds-bump.done { background: #d7f0dd; }
+.kds-bump:disabled, .kds-bump.locked { opacity: .5; cursor: not-allowed; }
 .kds-order-actions { display: flex; justify-content: flex-end; padding: .8rem 1rem; }.kds-order-actions button { background: #12583b; color: #fff; }
 .kds-empty { flex: 0 0 100%; padding: 3rem; border: 1px dashed #cbd8ce; border-radius: 16px; text-align: center; color: #6a776e; background: #fbfdfb; }
 .kds-availability { margin-top: 2rem; padding: 1.2rem; border: 1px solid #dce5de; border-radius: 16px; background: #f8fbf8; }.kds-availability h2 { margin: .25rem 0 1rem; }

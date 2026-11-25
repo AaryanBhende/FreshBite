@@ -8,7 +8,7 @@ const ZONES = [
   { key: 'Bar', title: 'Bar Counter', description: 'Counter seats' },
 ];
 
-export default function ReservationFloorMap({ tables = [], selectedId, onSelect, admin = false }) {
+export default function ReservationFloorMap({ tables = [], selectedId, selectedIds, onSelect, admin = false }) {
   const grouped = tables.reduce((result, table) => {
     (result[table.zone] ||= []).push(table);
     return result;
@@ -17,7 +17,7 @@ export default function ReservationFloorMap({ tables = [], selectedId, onSelect,
   const renderTable = (table, zoneKey) => {
     const status = table.table_status || 'Free';
     const canSelect = !admin && status === 'Free';
-    const isSelected = selectedId === table.id;
+    const isSelected = (selectedIds || (selectedId == null ? [] : [selectedId])).some((id) => Number(id) === Number(table.id));
     const label = zoneKey === 'Bar' ? `Bar ${table.table_number}` : `Table ${table.table_number}`;
     const timeLabel = table.reservation_time ? formatReservationSlot(table.reservation_time) : '';
     return (

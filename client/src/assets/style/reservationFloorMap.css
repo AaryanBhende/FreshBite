@@ -148,6 +148,8 @@
 .floor-map-empty { grid-column: 1 / -1; color: #747f76; font-size: .78rem; }
 .floor-map-admin { margin: 0 0 1rem; }
 .selected-table-guests { max-width: 20rem; margin-top: 1rem; }
+.selected-table-guests label { line-height: 1.45; }
+.selected-table-guests input { width: 100%; box-sizing: border-box; }
 .walkin-table-selection h4 { margin: 1rem 0 .25rem; color: #26392d; }
 
 @media (max-width: 850px) {

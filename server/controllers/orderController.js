@@ -115,13 +115,25 @@ export const markDeliveryPickedUp = async (req, res) => {
 
 export const getDriverOrders = async (req, res) => {
   try {
-    const [rows] = await pool.query(`SELECT o.order_id, o.order_type, o.address, o.coordinates, o.delivery_status, o.delivery_failure_reason, o.delivery_otp_expires_at,
+    const [rows] = await pool.query(`SELECT o.order_id, o.order_type, o.address, o.coordinates, o.delivery_status, o.kitchen_status, o.delivery_failure_reason, o.delivery_otp_expires_at,
       o.created_at, u.name AS customer_name, o.title, o.quantity, o.notes
       FROM orders o LEFT JOIN users u ON u.id = o.user_id
       WHERE o.driver_id = ? AND o.delivery_status IN ('assigned', 'accepted', 'picked_up', 'awaiting_otp') ORDER BY o.created_at`, [req.user.id]);
     const groups = new Map();
     rows.forEach(row => {
-      if (!groups.has(row.order_id)) groups.set(row.order_id, { ...row, items: [] });
+      if (!groups.has(row.order_id)) groups.set(row.order_id, {
+        order_id: row.order_id,
+        order_type: row.order_type,
+        address: row.address,
+        coordinates: row.coordinates,
+        delivery_status: row.delivery_status,
+        kitchen_status: row.kitchen_status,
+        delivery_failure_reason: row.delivery_failure_reason,
+        delivery_otp_expires_at: row.delivery_otp_expires_at,
+        created_at: row.created_at,
+        customer_name: row.customer_name,
+        items: [],
+      });
       groups.get(row.order_id).items.push({ title: row.title, quantity: row.quantity, notes: row.notes });
     });
     res.json([...groups.values()]);
@@ -293,18 +305,20 @@ export const createOrder = async (req, res) => {
       item.address || null,
       item.coordinates || null,
       item.table_id || null,
+      JSON.stringify(item.table_ids || (item.table_id ? [Number(item.table_id)] : [])),
       index === 0 ? deliveryFee : 0,
       index === 0 ? tipAmount : 0,
     ]);
 
-    const selectedTableIds = [...new Set(items.map((item) => item.table_id).filter(Boolean).map(Number))];
+    const selectedTableIds = [...new Set(items.flatMap((item) => item.table_ids || (item.table_id ? [item.table_id] : [])).filter(Boolean).map(Number))].sort((a, b) => a - b);
     if (selectedTableIds.some((id) => !Number.isInteger(id) || id < 1)) {
       await connection.rollback();
       return res.status(400).json({ error: 'table_id must be a valid table ID.' });
     }
-    if (selectedTableIds.length > 1) {
+    const itemTableSets = items.map((item) => JSON.stringify([...(item.table_ids || (item.table_id ? [item.table_id] : []))].map(Number).sort((a, b) => a - b)));
+    if (new Set(itemTableSets).size > 1) {
       await connection.rollback();
-      return res.status(400).json({ error: 'All items in an order must use the same table.' });
+      return res.status(400).json({ error: 'All items in an order must use the same selected tables.' });
     }
     if (selectedTableIds.length) {
       const [tables] = await connection.query(
@@ -320,7 +334,7 @@ export const createOrder = async (req, res) => {
     // 4. Execute single bulk-insert query (1 network round-trip ~10-30ms)
     const sql = `
       INSERT INTO orders 
-      (id, order_id, user_id, title, category, price, quantity, notes, completed, order_type, address, coordinates, table_id, delivery_fee, tip_amount)
+      (id, order_id, user_id, title, category, price, quantity, notes, completed, order_type, address, coordinates, table_id, table_ids, delivery_fee, tip_amount)
       VALUES ?
     `;
 
@@ -485,7 +499,7 @@ export const getUserOrders = async (req, res) => {
   try {
     // Fetch all rows for this user, newest group first (idx_orders_created)
     const [rows] = await pool.query(
-      `SELECT o.id, o.order_id, o.title, o.category, o.price, o.quantity, o.notes, o.completed, o.created_at, o.order_type, o.address, o.coordinates, o.table_id, o.kitchen_status,
+      `SELECT o.id, o.order_id, o.title, o.category, o.price, o.quantity, o.notes, o.completed, o.created_at, o.order_type, o.address, o.coordinates, o.table_id, o.table_ids, o.kitchen_status,
               o.delivery_status, o.driver_id, o.delivery_failure_reason, o.is_cooked,
               t.table_number, t.zone AS table_zone
        FROM orders o
@@ -504,6 +518,7 @@ export const getUserOrders = async (req, res) => {
           order_type: row.order_type,
           address: row.address,
           table_id: row.table_id,
+          table_ids: row.table_ids || (row.table_id ? [row.table_id] : []),
           table_number: row.table_number,
           table_zone: row.table_zone,
           created_at: row.created_at,
@@ -580,7 +595,7 @@ export const getOrderStatus = async (req, res) => {
   const userId = req.user.id;
   try {
     const [rows] = await pool.query(
-      `SELECT o.id, o.order_id, o.title, o.completed, o.is_cooked, o.created_at, o.order_type, o.coordinates, o.address, o.table_id, o.kitchen_status,
+      `SELECT o.id, o.order_id, o.title, o.completed, o.is_cooked, o.created_at, o.order_type, o.coordinates, o.address, o.table_id, o.table_ids, o.kitchen_status,
               o.delivery_status, o.driver_id, o.delivery_failure_reason,
               t.table_number, t.zone AS table_zone
        FROM orders o LEFT JOIN \`tables\` t ON o.table_id = t.id
@@ -651,6 +666,7 @@ export const getOrderStatus = async (req, res) => {
       coordinates: rows[0].coordinates,
       address: rows[0].address,
       table_id: rows[0].table_id,
+      table_ids: rows[0].table_ids || (rows[0].table_id ? [rows[0].table_id] : []),
       table_number: rows[0].table_number,
       table_zone: rows[0].table_zone,  
       stage,

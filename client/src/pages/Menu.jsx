@@ -83,7 +83,7 @@ export default function Menu() {
   const [duplicateDish, setDuplicateDish] = useState('');
   const [availableTables, setAvailableTables] = useState([]);
   const [seatingTables, setSeatingTables] = useState([]);
-  const [dineInTable, setDineInTable] = useState(null);
+  const [dineInTables, setDineInTables] = useState([]);
   const [dineInMode, setDineInMode] = useState('');
   const [seatedTableId, setSeatedTableId] = useState('');
   const [reservationDate, setReservationDate] = useState(getDefaultReservationDate);
@@ -91,7 +91,8 @@ export default function Menu() {
   const [reservationGuests, setReservationGuests] = useState(1);
   const [guestReservationName, setGuestReservationName] = useState('');
   const [guestReservationEmail, setGuestReservationEmail] = useState('');
-  const [selectedReservationTable, setSelectedReservationTable] = useState(null);
+  const [selectedReservationTables, setSelectedReservationTables] = useState([]);
+  const reservationMaxGuests = selectedReservationTables.reduce((sum, table) => sum + Number(table.capacity || 0), 0);
   const [loadingDineTables, setLoadingDineTables] = useState(false);
   const [dineInFeedback, setDineInFeedback] = useState('');
   const formRef = useRef(null);
@@ -394,7 +395,12 @@ export default function Menu() {
         if (!cancelled) {
           const tables = data.tables || [];
           setAvailableTables(tables);
-          setSelectedReservationTable((current) => current && tables.some((table) => table.id === current.id && table.table_status === 'Free') ? current : null);
+          setSelectedReservationTables((current) => {
+            const next = current.filter((selected) => tables.some((table) => Number(table.id) === Number(selected.id) && table.table_status === 'Free'));
+            const capacity = next.reduce((sum, table) => sum + Number(table.capacity || 0), 0);
+            setReservationGuests((guests) => Math.min(Number(guests) || 1, capacity) || '');
+            return next;
+          });
         }
       } catch (error) {
         if (!cancelled) setDineInFeedback(error.message);
@@ -416,8 +422,8 @@ export default function Menu() {
     } else {
       setGuestDineInCheckout(false);
       setDineInMode('');
-      setDineInTable(null);
-      setSelectedReservationTable(null);
+      setDineInTables([]);
+      setSelectedReservationTables([]);
     }
   };
 
@@ -431,7 +437,7 @@ export default function Menu() {
       setShowAuthModal(true);
       return;
     }
-    if (orderType === 'Dine In' && !dineInTable) {
+    if (orderType === 'Dine In' && !dineInTables.length) {
       setDineInFeedback('');
       setShowDineSeatingModal(true);
       return;
@@ -484,7 +490,7 @@ export default function Menu() {
             time_slot: reservationSlot,
             party_size: reservationGuests,
             special_requests: 'Dine-in order',
-            table_id: dineInTable.id,
+            table_ids: dineInTables.map((table) => Number(table.id)),
           }),
         });
         const reservationResult = await reservationResponse.json();
@@ -509,9 +515,10 @@ export default function Menu() {
           orderType === 'Delivery'
             ? `${deliveryCoordinates.lat},${deliveryCoordinates.lng}`
             : null,
-        table_id: orderType === 'Dine In' ? dineInTable?.id || null : null,
-        table_number: orderType === 'Dine In' ? dineInTable?.table_number || null : null,
-        table_zone: orderType === 'Dine In' ? dineInTable?.zone || null : null,
+        table_id: orderType === 'Dine In' ? dineInTables[0]?.id || null : null,
+        table_ids: orderType === 'Dine In' ? dineInTables.map((table) => Number(table.id)) : [],
+        table_number: orderType === 'Dine In' ? dineInTables.map((table) => table.table_number).join(', ') : null,
+        table_zone: orderType === 'Dine In' ? dineInTables.map((table) => table.zone).join(', ') : null,
         party_size: orderType === 'Dine In' && dineInMode === 'reserve' ? Number(reservationGuests) : null,
       }));
       const res = await fetch('/api/orders', {
@@ -528,8 +535,8 @@ export default function Menu() {
       setTipPercent(0);
       setCart([]);
       setDineInMode('');
-      setDineInTable(null);
-      setSelectedReservationTable(null);
+      setDineInTables([]);
+      setSelectedReservationTables([]);
       setGuestDineInCheckout(false);
       localStorage.removeItem('freshbite_cart');
       setLastOrderId(groupOrderId);
@@ -1028,7 +1035,7 @@ export default function Menu() {
                 onClick={() => {
                   const table = seatingTables.find((item) => String(item.id) === seatedTableId);
                   if (!table) return;
-                  setDineInTable(table);
+                  setDineInTables([table]);
                   setDineInMode('seated');
                   setShowDineSeatingModal(false);
                   setDineInFeedback('');
@@ -1044,7 +1051,7 @@ export default function Menu() {
               className="btn-secondary dine-reserve-choice"
               onClick={() => {
                 setDineInFeedback('');
-                setSelectedReservationTable(null);
+                setSelectedReservationTables([]);
                 setShowDineSeatingModal(false);
                 setShowDineReservationModal(true);
               }}
@@ -1078,24 +1085,25 @@ export default function Menu() {
                   type="date"
                   min={(() => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; })()}
                   value={reservationDate}
-                  onChange={(event) => { setReservationDate(event.target.value); setSelectedReservationTable(null); }}
+                  onChange={(event) => { setReservationDate(event.target.value); setSelectedReservationTables([]); }}
                 />
               </label>
               <label>
                 One-hour time slot
-                <select value={reservationSlot} onChange={(event) => { setReservationSlot(event.target.value); setSelectedReservationTable(null); }}>
+                <select value={reservationSlot} onChange={(event) => { setReservationSlot(event.target.value); setSelectedReservationTables([]); }}>
                   {RESERVATION_TIME_SLOTS.map((slot) => <option key={slot} value={slot}>{formatReservationSlot(slot)}</option>)}
                 </select>
               </label>
-              {selectedReservationTable && (
+              {selectedReservationTables.length > 0 && (
                 <label>
-                  Guests (maximum {selectedReservationTable.capacity})
+                  Guests · {selectedReservationTables.map((table) => `${table.zone} ${table.table_number}`).join(', ')} (maximum {reservationMaxGuests} seats)
                   <input
                     type="number"
                     min="1"
-                    max={selectedReservationTable.capacity}
+                    max={reservationMaxGuests}
                     value={reservationGuests}
-                    onChange={(event) => setReservationGuests(event.target.value === '' ? '' : Math.min(Number(event.target.value), selectedReservationTable.capacity))}
+                    onChange={(event) => setReservationGuests(event.target.value === '' ? '' : Math.min(Number(event.target.value), reservationMaxGuests))}
+                    onBlur={() => setReservationGuests((current) => Math.min(Number(current) || 1, reservationMaxGuests))}
                   />
                 </label>
               )}
@@ -1103,8 +1111,14 @@ export default function Menu() {
             {loadingDineTables ? <p role="status">Loading table availability…</p> : (
               <ReservationFloorMap
                 tables={availableTables}
-                selectedId={selectedReservationTable?.id}
-                onSelect={(table) => { setSelectedReservationTable(table); setReservationGuests(1); }}
+                selectedIds={selectedReservationTables.map((table) => Number(table.id))}
+                onSelect={(table) => setSelectedReservationTables((current) => {
+                  const next = current.some((item) => Number(item.id) === Number(table.id))
+                    ? current.filter((item) => Number(item.id) !== Number(table.id)) : [...current, table];
+                  const capacity = next.reduce((sum, item) => sum + Number(item.capacity || 0), 0);
+                  setReservationGuests((guests) => Math.min(Number(guests) || 1, capacity) || '');
+                  return next;
+                })}
               />
             )}
             {dineInFeedback && <p className="dine-seating-feedback" role="alert">{dineInFeedback}</p>}
@@ -1112,13 +1126,13 @@ export default function Menu() {
               <button
                 type="button"
                 className="btn-primary"
-                disabled={!selectedReservationTable || !reservationGuests || reservationGuests < 1 || reservationGuests > (selectedReservationTable?.capacity || 0) || loadingDineTables}
+                disabled={!selectedReservationTables.length || !reservationGuests || reservationGuests < 1 || reservationGuests > reservationMaxGuests || loadingDineTables}
                 onClick={() => {
                   if (!user && (!guestReservationName.trim() || !guestReservationEmail.trim())) {
                     setDineInFeedback('Enter your name and email to reserve a table as a guest.');
                     return;
                   }
-                  setDineInTable(selectedReservationTable);
+                  setDineInTables(selectedReservationTables);
                   setDineInMode('reserve');
                   setShowDineReservationModal(false);
                   setShowConfirmModal(true);
@@ -1226,9 +1240,9 @@ export default function Menu() {
                 <p><strong>Delivery fee:</strong> ₹{deliveryFee.toFixed(2)} · <strong>Driver tip:</strong> ₹{tipAmount.toFixed(2)}</p>
               </div>
             )}
-            {orderType === 'Dine In' && dineInTable && (
+            {orderType === 'Dine In' && dineInTables.length > 0 && (
               <p className="confirm-address">
-                <strong>Table:</strong> {dineInTable.zone === 'Bar' ? `Bar ${dineInTable.table_number}` : `Table ${dineInTable.table_number}`} · {dineInTable.zone}
+                <strong>Table{dineInTables.length > 1 ? 's' : ''}:</strong> {dineInTables.map((table) => `${table.zone} ${table.table_number}`).join(', ')} · {dineInTables.reduce((sum, table) => sum + Number(table.capacity || 0), 0)} seats
                 {dineInMode === 'reserve' && <> · {reservationGuests} guest{Number(reservationGuests) === 1 ? '' : 's'} · {reservationDate} · {formatReservationSlot(reservationSlot)}</>}
               </p>
             )}

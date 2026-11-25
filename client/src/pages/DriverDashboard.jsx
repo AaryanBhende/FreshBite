@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { GoogleMap, Marker, OverlayView, Polyline, useLoadScript } from '@react-google-maps/api';
 import { AuthContext } from '../context/AuthContext';
 import { readJsonResponse } from '../utils/readJsonResponse';
@@ -69,6 +69,8 @@ function DriverDeliveryRoute({ coordinates, address }) {
 export default function DriverDashboard() {
   const { token, user, logout } = useContext(AuthContext);
   const [orders, setOrders] = useState([]);
+  const [readyNotifications, setReadyNotifications] = useState([]);
+  const observedKitchenStatuses = useRef(null);
   const [reasons, setReasons] = useState({});
   const [failureDetails, setFailureDetails] = useState({});
   const [deliveryOtps, setDeliveryOtps] = useState({});
@@ -83,11 +85,39 @@ export default function DriverDashboard() {
     try {
       const response = await fetch('/api/orders/driver/assigned', { headers: { Authorization: `Bearer ${token}` } });
       const data = await readJsonResponse(response);
-      if (response.ok) setOrders(data);
-      else setMessage(data.error || 'Could not refresh assigned deliveries.');
+      if (response.ok) {
+        const nextOrders = Array.isArray(data) ? data : [];
+        const previousStatuses = observedKitchenStatuses.current;
+        if (previousStatuses) {
+          const newlyReady = nextOrders.filter((order) => (
+            order.kitchen_status === 'ready'
+            && ['assigned', 'accepted'].includes(order.delivery_status)
+            && (!previousStatuses.has(order.order_id) || previousStatuses.get(order.order_id) !== 'ready')
+          ));
+          if (newlyReady.length) {
+            const detectedAt = Date.now();
+            setReadyNotifications((current) => [
+              ...current,
+              ...newlyReady.map((order, index) => ({
+                id: `${order.order_id}-${detectedAt}-${index}`,
+                orderId: order.order_id,
+                customerName: order.customer_name || 'Guest',
+              })),
+            ]);
+          }
+        }
+        observedKitchenStatuses.current = new Map(nextOrders.map((order) => [order.order_id, order.kitchen_status]));
+        setOrders(nextOrders);
+      } else setMessage(data.error || 'Could not refresh assigned deliveries.');
     } catch { setMessage('Could not refresh assigned deliveries.'); }
   };
-  useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, [token]);
+  useEffect(() => {
+    observedKitchenStatuses.current = null;
+    setReadyNotifications([]);
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, [token]);
   useEffect(() => {
     if (activeView !== 'analytics') return;
     let cancelled = false;
@@ -143,6 +173,17 @@ export default function DriverDashboard() {
       <button className={activeView === 'deliveries' ? 'active' : ''} onClick={() => setActiveView('deliveries')}>Deliveries</button>
       <button className={activeView === 'analytics' ? 'active' : ''} onClick={() => setActiveView('analytics')}>Analytics &amp; Earnings</button>
     </nav>
+    {readyNotifications.length > 0 && <aside className="driver-ready-notifications" aria-live="polite" aria-label="Kitchen readiness notifications">
+      {readyNotifications.map((notification) => <div className="driver-ready-notification" key={notification.id}>
+        <span className="driver-ready-notification-icon" aria-hidden="true">✓</span>
+        <p><strong>Order #{notification.orderId} is ready in the kitchen.</strong><br />{notification.customerName}’s delivery is ready for pickup confirmation.</p>
+        <button type="button" className="driver-ready-focus" onClick={() => {
+          setActiveView('deliveries');
+          window.setTimeout(() => document.getElementById(`driver-order-${encodeURIComponent(notification.orderId)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+        }}>View order</button>
+        <button type="button" className="driver-ready-dismiss" aria-label={`Dismiss kitchen ready notification for order ${notification.orderId}`} onClick={() => setReadyNotifications((current) => current.filter((item) => item.id !== notification.id))}>Dismiss</button>
+      </div>)}
+    </aside>}
     {message && activeView === 'deliveries' && <p className="driver-dashboard-message" role="status">{message}</p>}
     {activeView === 'analytics' ? <section className="driver-analytics">
       <div className="driver-section-heading"><div><h2>Analytics &amp; Earnings</h2><p>Your earnings include delivery fees and 100% of customer tips.</p></div></div>
@@ -170,13 +211,14 @@ export default function DriverDashboard() {
       </>}
     </section> : <>
     <div className="driver-section-heading"><div><h2>Your deliveries</h2><p>New assignments appear here automatically.</p></div></div>
-    {!orders.length ? <section className="driver-empty-state"><span aria-hidden="true">🛵</span><h3>You’re all caught up</h3><p>No deliveries are assigned right now. Keep this page open for new orders.</p></section> : <div className="driver-order-list">{orders.map(order => <article className="driver-order-card" key={order.order_id}>
+    {!orders.length ? <section className="driver-empty-state"><span aria-hidden="true">🛵</span><h3>You’re all caught up</h3><p>No deliveries are assigned right now. Keep this page open for new orders.</p></section> : <div className="driver-order-list">{orders.map(order => <article className="driver-order-card" id={`driver-order-${encodeURIComponent(order.order_id)}`} key={order.order_id}>
       <header className="driver-order-card-heading"><div><span className="driver-order-label">DELIVERY ORDER</span><h3>#{order.order_id}</h3></div>
         <span className={`driver-status-pill driver-status-pill--${order.delivery_status}`}>{order.delivery_status === 'assigned' ? 'Awaiting acceptance' : order.delivery_status === 'accepted' ? 'Awaiting pickup confirmation' : order.delivery_status === 'awaiting_otp' ? 'Awaiting customer code' : 'Picked up · en route'}</span>
       </header>
       <div className="driver-order-facts">
         <div><span>Customer</span><strong>{order.customer_name || 'Guest'}</strong></div>
         <div><span>Delivery address</span><strong>{order.address || 'Address unavailable'}</strong></div>
+        <div className={`driver-kitchen-status driver-kitchen-status--${order.kitchen_status || 'pending'}`}><span>Kitchen status</span><strong>{order.kitchen_status === 'ready' ? 'Kitchen Ready' : order.kitchen_status === 'preparing' ? 'In preparation' : 'In kitchen queue'}</strong></div>
       </div>
       <section className="driver-route-section" aria-label={`Delivery route for order ${order.order_id}`}>
         <h4>Delivery route</h4>

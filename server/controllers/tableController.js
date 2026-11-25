@@ -28,18 +28,24 @@ export const getTableAvailability = async (req, res) => {
                    WHEN r.reservation_id IS NOT NULL THEN 'Booked' ELSE 'Free' END AS table_status
        FROM \`tables\` t
        LEFT JOIN (
-         SELECT table_id, MAX(id) AS reservation_id, MAX(guest_name) AS guest_name,
+         SELECT table_id, MAX(reservation_id) AS reservation_id, MAX(guest_name) AS guest_name,
                 MAX(time_slot) AS reservation_time,
                 MAX(status = 'Seated') AS has_occupied
-         FROM reservations
-         WHERE reservation_date = ?
-           AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
-           AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
-           AND status IN ('Pending', 'Confirmed', 'Seated')
+         FROM (
+           SELECT r.id AS reservation_id, r.table_id, r.guest_name, r.time_slot, r.status
+           FROM reservations r WHERE r.table_id IS NOT NULL AND r.reservation_date = ?
+             AND TIME(r.time_slot) < ADDTIME(TIME(?), '01:00:00') AND ADDTIME(TIME(r.time_slot), '01:00:00') > TIME(?)
+             AND r.status IN ('Pending', 'Confirmed', 'Seated')
+           UNION ALL
+           SELECT r.id, rt.table_id, r.guest_name, r.time_slot, r.status
+           FROM reservations r JOIN reservation_tables rt ON rt.reservation_id = r.id
+           WHERE r.reservation_date = ? AND TIME(r.time_slot) < ADDTIME(TIME(?), '01:00:00')
+             AND ADDTIME(TIME(r.time_slot), '01:00:00') > TIME(?) AND r.status IN ('Pending', 'Confirmed', 'Seated')
+         ) assigned
          GROUP BY table_id
        ) r ON r.table_id = t.id
        ORDER BY FIELD(t.zone, 'Indoor', 'Patio', 'Bar'), t.id`,
-      [date, timeSlot, timeSlot]
+      [date, timeSlot, timeSlot, date, timeSlot, timeSlot]
     );
     res.json({ date, time_slot: timeSlot, tables: rows });
   } catch (error) {

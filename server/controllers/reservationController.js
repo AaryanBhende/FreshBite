@@ -3,6 +3,18 @@ import pool from '../config/db.js';
 // One-hour reservation blocks, represented by their start time.
 export const TIME_SLOTS = Array.from({ length: 13 }, (_, hour) => `${String(hour + 9).padStart(2, '0')}:00`);
 
+const parseTableIds = (table_ids, table_id) => {
+  const raw = Array.isArray(table_ids) ? table_ids : (table_id == null || table_id === '' ? [] : [table_id]);
+  const ids = [...new Set(raw.map(Number))].sort((a, b) => a - b);
+  return ids.length && ids.every((id) => Number.isInteger(id) && id > 0) ? ids : null;
+};
+
+const saveReservationTables = async (connection, reservationId, tableIds) => {
+  for (const tableId of tableIds) {
+    await connection.query('INSERT INTO reservation_tables (reservation_id, table_id) VALUES (?, ?)', [reservationId, tableId]);
+  }
+};
+
 /**
  * GET /api/reservations/availability?date=YYYY-MM-DD
  * Returns free table counts and availability status for all one-hour slots on a date.
@@ -23,12 +35,14 @@ export const getAvailability = async (req, res) => {
     const [[tableCountRow]] = await pool.query('SELECT COUNT(*) AS total_tables FROM `tables`');
     const totalTables = Number(tableCountRow.total_tables);
     const [rows] = await pool.query(
-      `SELECT DISTINCT table_id, time_slot
-       FROM reservations
-       WHERE reservation_date = ?
-         AND table_id IS NOT NULL
-         AND status IN ('Pending', 'Confirmed', 'Seated')`,
-      [date]
+      `SELECT DISTINCT assigned.table_id, assigned.time_slot FROM (
+         SELECT r.table_id, r.time_slot FROM reservations r WHERE r.table_id IS NOT NULL
+           AND r.reservation_date = ? AND r.status IN ('Pending', 'Confirmed', 'Seated')
+         UNION ALL
+         SELECT rt.table_id, r.time_slot FROM reservations r JOIN reservation_tables rt ON rt.reservation_id = r.id
+           WHERE r.reservation_date = ? AND r.status IN ('Pending', 'Confirmed', 'Seated')
+       ) assigned`,
+      [date, date]
     );
 
     const slots = TIME_SLOTS.map((slot) => {
@@ -75,12 +89,13 @@ export const createReservation = async (req, res) => {
     party_size,
     special_requests = '',
     table_id,
+    table_ids,
   } = req.body;
 
   // 1. Basic validation
-  if (!guest_name || !guest_email || !reservation_date || !time_slot || !party_size || !table_id) {
+  if (!guest_name || !guest_email || !reservation_date || !time_slot || !party_size || !(table_ids || table_id)) {
     return res.status(400).json({
-      error: 'guest_name, guest_email, reservation_date, time_slot, party_size, and table_id are required.',
+      error: 'guest_name, guest_email, reservation_date, time_slot, party_size, and table_ids are required.',
     });
   }
 
@@ -111,36 +126,32 @@ export const createReservation = async (req, res) => {
   }
 
   const userId = req.user ? req.user.id : null;
-  const tableId = table_id === undefined || table_id === null || table_id === '' ? null : Number(table_id);
-  if (tableId !== null && (!Number.isInteger(tableId) || tableId < 1)) {
-    return res.status(400).json({ error: 'table_id must be a valid table number.' });
-  }
+  const tableIds = parseTableIds(table_ids, table_id);
+  if (!tableIds) return res.status(400).json({ error: 'table_ids must contain valid table IDs.' });
 
   // 2. Transaction with availability check locking the target slot
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    if (tableId !== null) {
-      const [tableRows] = await connection.query(
-        'SELECT id, zone, capacity FROM `tables` WHERE id = ? FOR UPDATE',
-        [tableId]
-      );
-      if (!tableRows.length) {
-        await connection.rollback();
-        return res.status(400).json({ error: 'Selected table does not exist.' });
-      }
-      const table = tableRows[0];
-      if (table.capacity < numPartySize) {
-        await connection.rollback();
-        return res.status(400).json({ error: `Selected table seats up to ${table.capacity} guests.` });
-      }
+    const [tableRows] = await connection.query('SELECT id, table_number, zone, capacity FROM `tables` WHERE id IN (?) ORDER BY id FOR UPDATE', [tableIds]);
+    if (tableRows.length !== tableIds.length) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'One or more selected tables do not exist.' });
+    }
+    const combinedCapacity = tableRows.reduce((sum, table) => sum + Number(table.capacity), 0);
+    if (numPartySize > combinedCapacity) {
+      await connection.rollback();
+      return res.status(400).json({ error: `Selected tables seat up to ${combinedCapacity} guests.` });
+    }
+    for (const tableId of tableIds) {
       const [conflicts] = await connection.query(
-        `SELECT id FROM reservations WHERE table_id = ? AND reservation_date = ?
+        `SELECT r.id FROM reservations r LEFT JOIN reservation_tables rt ON rt.reservation_id = r.id
+         WHERE (r.table_id = ? OR rt.table_id = ?) AND r.reservation_date = ?
          AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
          AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
-         AND status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
-        [tableId, reservation_date, time_slot, time_slot]
+         AND r.status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
+        [tableId, tableId, reservation_date, time_slot, time_slot]
       );
       if (conflicts.length) {
         await connection.rollback();
@@ -166,9 +177,10 @@ export const createReservation = async (req, res) => {
         'No Preference',
         special_requests ? String(special_requests).trim() : null,
         status,
-        tableId,
+        tableIds[0],
       ]
     );
+    await saveReservationTables(connection, reservationId, tableIds);
 
     await connection.commit();
 
@@ -186,7 +198,10 @@ export const createReservation = async (req, res) => {
         seating_pref: 'No Preference',
         special_requests,
         status,
-        table_id: tableId,
+        table_id: tableIds[0],
+        table_ids: tableIds,
+        table_capacity: combinedCapacity,
+        tables: tableRows.map((table) => ({ table_id: Number(table.id), table_number: table.table_number, zone: table.zone, capacity: Number(table.capacity) })),
       },
     });
   } catch (error) {
@@ -211,6 +226,20 @@ export const getUserReservations = async (req, res) => {
        ORDER BY reservation_date DESC, time_slot DESC`,
       [userId]
     );
+    if (rows.length) {
+      const [assigned] = await pool.query(
+        `SELECT rt.reservation_id, t.id AS table_id, t.table_number, t.zone, t.capacity
+         FROM reservation_tables rt JOIN \`tables\` t ON t.id = rt.table_id
+         WHERE rt.reservation_id IN (?) ORDER BY t.id`,
+        [rows.map((row) => row.id)]
+      );
+      const assignedByReservation = new Map();
+      for (const table of assigned) assignedByReservation.set(table.reservation_id, [...(assignedByReservation.get(table.reservation_id) || []), table]);
+      rows.forEach((row) => {
+        row.tables = assignedByReservation.get(row.id) || (row.table_id ? [{ table_id: row.table_id }] : []);
+        row.table_ids = row.tables.map((table) => Number(table.table_id));
+      });
+    }
     res.json(rows);
   } catch (error) {
     console.error('getUserReservations error:', error);
@@ -294,6 +323,18 @@ export const getAdminReservations = async (req, res) => {
     sql += ' ORDER BY r.reservation_date DESC, r.time_slot ASC, r.created_at DESC';
 
     const [rows] = await pool.query(sql, params);
+    const [assigned] = await pool.query(
+      `SELECT rt.reservation_id, t.id AS table_id, t.table_number, t.zone, t.capacity
+       FROM reservation_tables rt JOIN \`tables\` t ON t.id = rt.table_id
+       WHERE rt.reservation_id IN (?) ORDER BY t.id`,
+      [rows.map((row) => row.id).length ? rows.map((row) => row.id) : ['']]
+    );
+    const assignedByReservation = new Map();
+    for (const table of assigned) assignedByReservation.set(table.reservation_id, [...(assignedByReservation.get(table.reservation_id) || []), table]);
+    rows.forEach((row) => {
+      row.tables = assignedByReservation.get(row.id) || (row.table_id ? [{ table_id: row.table_id, table_number: row.table_number, zone: row.table_zone, capacity: row.table_capacity }] : []);
+      row.table_ids = row.tables.map((table) => Number(table.table_id));
+    });
     res.json(rows);
   } catch (error) {
     console.error('getAdminReservations error:', error);
@@ -350,13 +391,14 @@ export const createWalkInReservation = async (req, res) => {
     time_slot,
     party_size,
     table_id,
+    table_ids,
     special_requests = 'Walk-in party',
     status = 'Seated',
   } = req.body;
 
-  if (!reservation_date || !time_slot || !party_size || !table_id) {
+  if (!reservation_date || !time_slot || !party_size || !(table_ids || table_id)) {
     return res.status(400).json({
-      error: 'reservation_date, time_slot, party_size, and table_id are required.',
+      error: 'reservation_date, time_slot, party_size, and table_ids are required.',
     });
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(reservation_date))) {
@@ -368,10 +410,8 @@ export const createWalkInReservation = async (req, res) => {
     return res.status(400).json({ error: 'Party size must be a positive number.' });
   }
 
-  const tableId = Number(table_id);
-  if (!Number.isInteger(tableId) || tableId < 1) {
-    return res.status(400).json({ error: 'table_id must be a valid table number.' });
-  }
+  const tableIds = parseTableIds(table_ids, table_id);
+  if (!tableIds) return res.status(400).json({ error: 'table_ids must contain valid table IDs.' });
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time_slot))) {
     return res.status(400).json({ error: 'Invalid walk-in time. Use a valid time in HH:mm format.' });
   }
@@ -388,28 +428,29 @@ export const createWalkInReservation = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const [tableRows] = await connection.query(
-      'SELECT capacity FROM `tables` WHERE id = ? FOR UPDATE',
-      [tableId]
-    );
-    if (!tableRows.length) {
+    const [tableRows] = await connection.query('SELECT id, capacity FROM `tables` WHERE id IN (?) ORDER BY id FOR UPDATE', [tableIds]);
+    if (tableRows.length !== tableIds.length) {
       await connection.rollback();
-      return res.status(400).json({ error: 'Selected table does not exist.' });
+      return res.status(400).json({ error: 'One or more selected tables do not exist.' });
     }
-    if (numPartySize > Number(tableRows[0].capacity)) {
+    const combinedCapacity = tableRows.reduce((sum, table) => sum + Number(table.capacity), 0);
+    if (numPartySize > combinedCapacity) {
       await connection.rollback();
-      return res.status(400).json({ error: `Selected table seats up to ${tableRows[0].capacity} guests.` });
+      return res.status(400).json({ error: `Selected tables seat up to ${combinedCapacity} guests.` });
     }
-    const [conflicts] = await connection.query(
-      `SELECT id FROM reservations WHERE table_id = ? AND reservation_date = ?
+    for (const tableId of tableIds) {
+      const [conflicts] = await connection.query(
+      `SELECT r.id FROM reservations r LEFT JOIN reservation_tables rt ON rt.reservation_id = r.id
+       WHERE (r.table_id = ? OR rt.table_id = ?) AND r.reservation_date = ?
        AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
        AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
-       AND status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
-      [tableId, reservation_date, time_slot, time_slot]
-    );
-    if (conflicts.length) {
-      await connection.rollback();
-      return res.status(409).json({ error: 'That table is already booked for this time slot.' });
+       AND r.status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
+      [tableId, tableId, reservation_date, time_slot, time_slot]
+      );
+      if (conflicts.length) {
+        await connection.rollback();
+        return res.status(409).json({ error: 'That table is already booked for this time slot.' });
+      }
     }
 
     const reservationId = `walkin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -427,9 +468,10 @@ export const createWalkInReservation = async (req, res) => {
         numPartySize,
         special_requests,
         status,
-        tableId,
+        tableIds[0],
       ]
     );
+    await saveReservationTables(connection, reservationId, tableIds);
 
     await connection.commit();
 
@@ -437,7 +479,9 @@ export const createWalkInReservation = async (req, res) => {
       success: true,
       message: 'Walk-in party recorded successfully!',
       reservation_id: reservationId,
-      table_id: tableId,
+      table_id: tableIds[0],
+      table_ids: tableIds,
+      table_capacity: combinedCapacity,
     });
   } catch (error) {
     await connection.rollback();

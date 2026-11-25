@@ -49,14 +49,15 @@ export default function Reservations() {
   const [feedback, setFeedback] = useState({ msg: '', type: '' });
   const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [tableAvailability, setTableAvailability] = useState([]);
-  const [selectedTable, setSelectedTable] = useState(null);
+  const [selectedTables, setSelectedTables] = useState([]);
+  const maxGuests = selectedTables.reduce((total, table) => total + Number(table.capacity || 0), 0);
   const [loadingTables, setLoadingTables] = useState(false);
   const futureSlots = availability.filter((slot) => !isReservationSlotInPast(formData.reservation_date, slot.time_slot, currentTime));
 
   useEffect(() => {
     if (isReservationSlotInPast(formData.reservation_date, formData.time_slot, currentTime)) {
       setFormData((current) => ({ ...current, time_slot: '' }));
-      setSelectedTable(null);
+      setSelectedTables([]);
     }
   }, [formData.reservation_date, formData.time_slot, currentTime]);
 
@@ -66,7 +67,7 @@ export default function Reservations() {
   }, [formData.reservation_date]);
 
   useEffect(() => {
-    setSelectedTable(null);
+    setSelectedTables([]);
     setTableAvailability([]);
     if (!formData.reservation_date || !formData.time_slot) return;
     let cancelled = false;
@@ -80,7 +81,12 @@ export default function Reservations() {
         if (!cancelled) {
           const nextTables = data.tables || [];
           setTableAvailability(nextTables);
-          setSelectedTable((current) => current && !nextTables.some((table) => table.id === current.id && table.table_status === 'Free') ? null : current);
+          setSelectedTables((current) => {
+            const next = current.filter((selected) => nextTables.some((table) => Number(table.id) === Number(selected.id) && table.table_status === 'Free'));
+            const capacity = next.reduce((sum, table) => sum + Number(table.capacity || 0), 0);
+            setFormData((prev) => ({ ...prev, party_size: Math.min(Number(prev.party_size) || 1, capacity) || '' }));
+            return next;
+          });
         }
       } catch (error) {
         if (!cancelled) setFeedback({ msg: error.message, type: 'error' });
@@ -138,12 +144,12 @@ export default function Reservations() {
       setFeedback({ msg: 'Please select an available one-hour time slot.', type: 'error' });
       return;
     }
-    if (!selectedTable) {
+    if (!selectedTables.length) {
       setFeedback({ msg: 'Please choose an available table from the floor map.', type: 'error' });
       return;
     }
-    if (!formData.party_size || Number(formData.party_size) < 1 || Number(formData.party_size) > Number(selectedTable.capacity)) {
-      setFeedback({ msg: `Choose between 1 and ${selectedTable.capacity} guests for this table.`, type: 'error' });
+    if (!formData.party_size || Number(formData.party_size) < 1 || Number(formData.party_size) > maxGuests) {
+      setFeedback({ msg: `Choose between 1 and ${maxGuests} guests for these tables.`, type: 'error' });
       return;
     }
 
@@ -157,7 +163,7 @@ export default function Reservations() {
       const res = await fetch('/api/reservations', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ ...formData, table_id: selectedTable.id }),
+        body: JSON.stringify({ ...formData, table_ids: selectedTables.map((table) => Number(table.id)) }),
       });
 
       const data = await res.json();
@@ -171,12 +177,11 @@ export default function Reservations() {
             if (tableRes.ok) setTableAvailability(tableData.tables || []);
           })
           .catch(() => {});
-        setSelectedTable(null);
+        setSelectedTables([]);
       } else {
         setConfirmedBooking({
           ...data.reservation,
-          table_number: selectedTable.table_number,
-          table_zone: selectedTable.zone,
+          tables: selectedTables.map(({ id, table_number, zone, capacity }) => ({ table_id: id, table_number, zone, capacity })),
         });
         setFeedback({
           msg: `Table reserved successfully! Confirmation ID: ${data.reservation.id}`,
@@ -220,8 +225,10 @@ export default function Reservations() {
               <p>
                 <strong>Party Size:</strong> {confirmedBooking.party_size} Guests
               </p>
-              {confirmedBooking.table_number && (
-                <p><strong>Table:</strong> {confirmedBooking.table_zone === 'Bar' ? 'Bar-' : ''}{confirmedBooking.table_number} · {confirmedBooking.table_zone}</p>
+              {(confirmedBooking.tables?.length > 0 || confirmedBooking.table_number) && (
+                <p><strong>Table{confirmedBooking.tables?.length > 1 ? 's' : ''}:</strong> {confirmedBooking.tables?.length
+                  ? confirmedBooking.tables.map((table) => `${table.zone} ${table.table_number}`).join(', ')
+                  : `${confirmedBooking.table_zone} ${confirmedBooking.table_number}`}</p>
               )}
               <p className="reservation-confirmation-status">
                 <strong>Status:</strong>{' '}
@@ -237,7 +244,7 @@ export default function Reservations() {
                 onClick={() => {
                   setConfirmedBooking(null);
                   setFormData((prev) => ({ ...prev, time_slot: '', party_size: '', special_requests: '' }));
-                  setSelectedTable(null);
+                  setSelectedTables([]);
                 }}
               >
                 Book Another Table
@@ -363,29 +370,35 @@ export default function Reservations() {
                 <section className="slots-section" aria-live="polite">
                   <div className="slots-header">
                     <h3>Choose your table</h3>
-                    {selectedTable && <span>Up to {selectedTable.capacity} guests</span>}
+                    {selectedTables.length > 0 && <span>Combined capacity: {maxGuests} seats</span>}
                   </div>
                   {loadingTables ? <p className="reservation-slots-loading">Loading table availability…</p> : (
                     <ReservationFloorMap
                       tables={tableAvailability}
-                      selectedId={selectedTable?.id}
+                      selectedIds={selectedTables.map((table) => Number(table.id))}
                       onSelect={(table) => {
-                        setSelectedTable(table);
-                        setFormData((prev) => ({ ...prev, party_size: 1 }));
+                        setSelectedTables((current) => {
+                          const next = current.some((item) => Number(item.id) === Number(table.id))
+                            ? current.filter((item) => Number(item.id) !== Number(table.id)) : [...current, table];
+                          const capacity = next.reduce((sum, item) => sum + Number(item.capacity || 0), 0);
+                          setFormData((prev) => ({ ...prev, party_size: Math.min(Number(prev.party_size) || 1, capacity) || '' }));
+                          return next;
+                        });
                       }}
                     />
                   )}
-                  {selectedTable && (
+                  {selectedTables.length > 0 && (
                     <div className="res-form-group selected-table-guests">
-                      <label htmlFor="selected-table-party">Guests at {selectedTable.zone === 'Bar' ? 'Bar-' : ''}{selectedTable.table_number} (maximum {selectedTable.capacity})</label>
+                      <label htmlFor="selected-table-party">Guests · {selectedTables.map((table) => `${table.zone} ${table.table_number}`).join(', ')} (combined maximum {maxGuests} seats)</label>
                       <input
                         id="selected-table-party"
                         type="number"
                         min="1"
-                        max={selectedTable.capacity}
+                        max={maxGuests}
                         required
                         value={formData.party_size}
-                        onChange={(event) => setFormData((prev) => ({ ...prev, party_size: event.target.value === '' ? '' : Math.min(Number(event.target.value), selectedTable.capacity) }))}
+                        onChange={(event) => setFormData((prev) => ({ ...prev, party_size: event.target.value === '' ? '' : Math.min(Number(event.target.value), maxGuests) }))}
+                        onBlur={() => setFormData((prev) => ({ ...prev, party_size: Math.min(Number(prev.party_size) || 1, maxGuests) }))}
                       />
                     </div>
                   )}
@@ -399,7 +412,7 @@ export default function Reservations() {
               <button
                 type="submit"
                 className="res-submit-btn"
-                disabled={submitting || !formData.time_slot || !selectedTable || loadingTables || !formData.party_size || formData.party_size < 1 || formData.party_size > (selectedTable?.capacity || 0)}
+                disabled={submitting || !formData.time_slot || !selectedTables.length || loadingTables || !formData.party_size || formData.party_size < 1 || formData.party_size > maxGuests}
               >
                 {submitting
                   ? 'Confirming Table…'

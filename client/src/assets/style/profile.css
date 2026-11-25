@@ -734,3 +734,23 @@
 }
 .profile-auth-gate h2 { font-size: 1.5rem; margin-bottom: 0.75rem; }
 .profile-auth-gate p  { font-size: 1rem; color: #888; margin-bottom: 1.5rem; }
+.driver-ready-notifications { display: grid; gap: .65rem; margin: 0 0 1rem; }
+.driver-ready-notification { display: flex; align-items: center; gap: .85rem; padding: .9rem 1rem; border: 1px solid #9bcba7; border-radius: 12px; background: #edf8ef; color: #1c4d2c; box-shadow: 0 6px 18px rgba(24, 62, 40, .08); }
+.driver-ready-notification-icon { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #267144; color: #fff; font-weight: 850; }
+.driver-ready-notification p { flex: 1; margin: 0; color: #355c3e; font-size: .9rem; line-height: 1.45; }
+.driver-ready-notification p strong { color: #174b2a; }
+.driver-ready-notification button { min-height: 38px; padding: .45rem .75rem; border: 0; border-radius: 8px; background: #236b3c; color: #fff; font: inherit; font-size: .82rem; font-weight: 750; cursor: pointer; }
+.driver-ready-notification button.driver-ready-dismiss { border: 1px solid #b7cfbc; background: #fff; color: #365844; }
+.driver-kitchen-status { grid-column: 1 / -1; display: flex !important; align-items: center; justify-content: space-between; gap: 1rem !important; padding: .7rem .85rem; border: 1px solid #e2e9e3; border-radius: 10px; background: #f6f8f6; }
+.driver-order-facts .driver-kitchen-status span { color: #5f7065; }
+.driver-order-facts .driver-kitchen-status strong { padding: .3rem .6rem; border-radius: 999px; background: #e8eee9; color: #496050; font-size: .82rem; }
+.driver-order-facts .driver-kitchen-status--preparing { border-color: #ecd69d; background: #fffaf0; }
+.driver-order-facts .driver-kitchen-status--preparing strong { background: #fff0c9; color: #805709; }
+.driver-order-facts .driver-kitchen-status--ready { border-color: #9bcba7; background: #edf8ef; }
+.driver-order-facts .driver-kitchen-status--ready strong { background: #d7efdc; color: #1c5c32; }
+
+@media (max-width: 560px) {
+  .driver-ready-notification { align-items: flex-start; flex-wrap: wrap; }
+  .driver-ready-notification p { min-width: calc(100% - 3rem); }
+  .driver-ready-notification button { margin-left: 2.85rem; }
+}

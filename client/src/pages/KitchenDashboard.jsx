@@ -6,6 +6,7 @@ import '../assets/style/kitchen.css';
 
 const TYPES = ['All', 'Dine In', 'Delivery', 'Takeout'];
 const elapsed = (createdAt, now) => Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 1000));
+const isDineInOrder = (order) => String(order.order_type || '').toLowerCase().replace(/[-_\s]/g, '') === 'dinein';
 
 export default function KitchenDashboard() {
   const { token, user } = useContext(AuthContext);
@@ -78,7 +79,8 @@ export default function KitchenDashboard() {
       await refresh(); if (tab === 'history') await loadHistory();
     } catch (error) { setError(error.message || 'Could not update order.'); }
   };
-  const bumpItem = async (itemId) => {
+  const bumpItem = async (order, itemId) => {
+    if (isDineInOrder(order) && order.kitchen_status !== 'preparing') return;
     try {
       const res = await fetch(`/api/kds/orders/items/${encodeURIComponent(itemId)}/bump`, { method: 'PUT', headers, body: '{}' });
       const data = await readJsonResponse(res);
@@ -115,8 +117,12 @@ export default function KitchenDashboard() {
       return <article className={`kds-order ${tab === 'orders' ? urgency : ''}`} key={order.order_id}>
         <div className="kds-order-top"><div><span className="kds-type">{order.order_type}</span><h2>#{order.order_id.slice(-6)}</h2></div>{tab === 'orders' && <div className="kds-clock">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</div>}</div>
         <p className="kds-order-meta">{order.customer_name || 'Guest'}{order.table_number ? ` · Table ${order.table_number} ${order.table_zone || ''}` : ''}</p>
-        <div className="kds-items">{order.items.map(item => <div className="kds-item" key={item.id}><div><strong>{item.quantity}× {item.title}</strong>{item.notes && <p className="kds-note">Note: {item.notes}</p>}</div>{order.order_type === 'Dine In' && tab === 'orders' && <button className={`kds-bump ${item.is_cooked ? 'done' : ''}`} onClick={() => bumpItem(item.id)}>{item.is_cooked ? '✓ Done' : 'Bump'}</button>}</div>)}</div>
-        <footer className="kds-order-actions">{tab === 'history' ? <button onClick={() => updateStatus(order.order_id, 'preparing')}>Recall Order</button> : order.kitchen_status === 'pending' ? <button onClick={() => updateStatus(order.order_id, 'preparing')}>Start Preparing</button> : <button disabled={order.order_type === 'Dine In' && order.items.some(item => !item.is_cooked)} title={order.order_type === 'Dine In' && order.items.some(item => !item.is_cooked) ? 'Bump every item first' : ''} onClick={() => updateStatus(order.order_id, 'ready')}>Mark Ready</button>}</footer>
+        <div className="kds-items">{order.items.map(item => {
+          const dineIn = isDineInOrder(order);
+          const bumpLocked = dineIn && order.kitchen_status !== 'preparing';
+          return <div className="kds-item" key={item.id}><div><strong>{item.quantity}× {item.title}</strong>{item.notes && <p className="kds-note">Note: {item.notes}</p>}</div>{dineIn && tab === 'orders' && <button type="button" className={`kds-bump ${item.is_cooked ? 'done' : ''}${bumpLocked ? ' locked' : ''}`} disabled={bumpLocked} title={bumpLocked ? "Click 'Start Preparing' before bumping items" : undefined} onClick={() => bumpItem(order, item.id)}>{item.is_cooked ? '✓ Done' : 'Bump'}</button>}</div>;
+        })}</div>
+        <footer className="kds-order-actions">{tab === 'history' ? <button onClick={() => updateStatus(order.order_id, 'preparing')}>Recall Order</button> : order.kitchen_status === 'pending' ? <button onClick={() => updateStatus(order.order_id, 'preparing')}>Start Preparing</button> : <button disabled={isDineInOrder(order) && order.items.some(item => !item.is_cooked)} title={isDineInOrder(order) && order.items.some(item => !item.is_cooked) ? 'Bump every item first' : ''} onClick={() => updateStatus(order.order_id, 'ready')}>Mark Ready</button>}</footer>
       </article>;
     }) : <div className="kds-empty">{tab === 'history' ? 'No completed orders in the last hour.' : 'No active orders. New tickets will appear here.'}</div>}</section>
     <section className="kds-availability"><div><p className="kds-eyebrow">Menu controls</p><h2>Item availability</h2></div><div className="kds-menu-items">{menu.map(item => <div className="kds-menu-item" key={item.id}><span>{item.title}</span><button className={item.is_available ? 'available' : 'unavailable'} onClick={() => toggleAvailability(item)}>{item.is_available ? 'Available' : 'Sold Out'}</button></div>)}</div></section>

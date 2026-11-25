@@ -1,2 +1,4 @@
 node_modules/
 postman/
+server/.env
+client/.env.local

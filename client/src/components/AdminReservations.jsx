@@ -34,14 +34,15 @@ export default function AdminReservations({ token }) {
     reservation_date: todayStr,
     time_slot: '12:00',
     party_size: '',
-    table_id: '',
+    table_ids: [],
     special_requests: 'Walk-in party',
     status: 'Seated',
   });
   const [walkinFeedback, setWalkinFeedback] = useState({ msg: '', type: '' });
   const [walkinSubmitting, setWalkinSubmitting] = useState(false);
   const [walkinTables, setWalkinTables] = useState([]);
-  const [selectedWalkinTable, setSelectedWalkinTable] = useState(null);
+  const [selectedWalkinTables, setSelectedWalkinTables] = useState([]);
+  const walkinMaxGuests = selectedWalkinTables.reduce((sum, table) => sum + Number(table.capacity || 0), 0);
 
   useEffect(() => {
     fetchReservations();
@@ -75,7 +76,8 @@ export default function AdminReservations({ token }) {
     if (!showWalkinModal) return;
     let cancelled = false;
     setSelectedWalkinTable(null);
-    setWalkinData((prev) => ({ ...prev, table_id: '', party_size: '' }));
+    setWalkinData((prev) => ({ ...prev, table_ids: [], party_size: '' }));
+    setSelectedWalkinTables([]);
     setWalkinTables([]);
     if (!walkinData.reservation_date || !walkinData.time_slot) {
       return () => { cancelled = true; };
@@ -391,7 +393,7 @@ export default function AdminReservations({ token }) {
                     <td>
                       <strong>{r.party_size}</strong> {r.party_size === 1 ? 'guest' : 'guests'}
                     </td>
-                    <td>{r.table_number ? `${r.table_zone === 'Bar' ? 'Bar-' : ''}${r.table_number} · ${r.table_zone}` : 'Unassigned'}</td>
+                    <td>{r.tables?.length ? r.tables.map((table) => `${table.zone || r.table_zone} ${table.table_number || ''}`.trim()).join(', ') : (r.table_number ? `${r.table_zone === 'Bar' ? 'Bar-' : ''}${r.table_number} · ${r.table_zone}` : 'Unassigned')}</td>
                     <td className="admin-res-requests">
                       {r.special_requests || '—'}
                     </td>
@@ -440,8 +442,8 @@ export default function AdminReservations({ token }) {
               {sortedSlots.map((slot) => {
                 const parties = timeSlotGroups[slot];
                 const activeParties = parties.filter((p) => ['Pending', 'Confirmed', 'Seated'].includes(p.status));
-                const assignedTables = new Set(activeParties.map((party) => party.table_id).filter(Boolean));
-                const slotOccupancy = assignedTables.size + activeParties.filter((party) => !party.table_id).length;
+                const assignedTables = new Set(activeParties.flatMap((party) => party.table_ids?.length ? party.table_ids : (party.table_id ? [party.table_id] : [])).map(Number));
+                const slotOccupancy = assignedTables.size + activeParties.filter((party) => !party.table_id && !party.table_ids?.length).length;
 
                 return (
                   <div className="slot-block" key={slot}>
@@ -469,7 +471,7 @@ export default function AdminReservations({ token }) {
                           </div>
                           <div className="party-card-details">
                             <span>👥 {p.party_size} guests</span>
-                            <span>• {p.table_number ? `${p.table_zone === 'Bar' ? 'Bar-' : ''}${p.table_number}` : 'Unassigned table'}</span>
+                            <span>• {p.tables?.length ? p.tables.map((table) => `${table.zone || p.table_zone} ${table.table_number || ''}`.trim()).join(', ') : (p.table_number ? `${p.table_zone === 'Bar' ? 'Bar-' : ''}${p.table_number}` : 'Unassigned table')}</span>
                           </div>
                           {p.special_requests && (
                             <div className="admin-res-special-requests">
@@ -563,23 +565,29 @@ export default function AdminReservations({ token }) {
                 <h4>Select an available table</h4>
                 <ReservationFloorMap
                   tables={walkinTables}
-                  selectedId={selectedWalkinTable?.id}
+                  selectedIds={selectedWalkinTables.map((table) => Number(table.id))}
                   onSelect={(table) => {
-                    setSelectedWalkinTable(table);
-                    setWalkinData((prev) => ({ ...prev, table_id: table.id, party_size: 1 }));
+                    setSelectedWalkinTables((current) => {
+                      const next = current.some((item) => Number(item.id) === Number(table.id))
+                        ? current.filter((item) => Number(item.id) !== Number(table.id)) : [...current, table];
+                      const capacity = next.reduce((sum, item) => sum + Number(item.capacity || 0), 0);
+                      setWalkinData((prev) => ({ ...prev, table_ids: next.map((item) => Number(item.id)), party_size: Math.min(Number(prev.party_size) || 1, capacity) || '' }));
+                      return next;
+                    });
                   }}
                 />
-                {selectedWalkinTable && (
+                {selectedWalkinTables.length > 0 && (
                   <div className="res-form-group selected-table-guests">
-                    <label htmlFor="w-size">Guests at table (maximum {selectedWalkinTable.capacity})</label>
+                    <label htmlFor="w-size">Guests · {selectedWalkinTables.map((table) => `${table.zone} ${table.table_number}`).join(', ')} (combined maximum {walkinMaxGuests} seats)</label>
                     <input
                       id="w-size"
                       type="number"
                       min="1"
-                      max={selectedWalkinTable.capacity}
+                      max={walkinMaxGuests}
                       required
                       value={walkinData.party_size}
-                      onChange={(event) => setWalkinData((prev) => ({ ...prev, party_size: event.target.value === '' ? '' : Math.min(Number(event.target.value), selectedWalkinTable.capacity) }))}
+                      onChange={(event) => setWalkinData((prev) => ({ ...prev, party_size: event.target.value === '' ? '' : Math.min(Number(event.target.value), walkinMaxGuests) }))}
+                      onBlur={() => setWalkinData((prev) => ({ ...prev, party_size: Math.min(Number(prev.party_size) || 1, walkinMaxGuests) }))}
                     />
                   </div>
                 )}
@@ -592,7 +600,7 @@ export default function AdminReservations({ token }) {
               )}
 
               <div className="modal-btn-row">
-                <button type="submit" className="btn-primary" disabled={walkinSubmitting || !selectedWalkinTable || !walkinData.party_size || walkinData.party_size > (selectedWalkinTable?.capacity || 0)}>
+                <button type="submit" className="btn-primary" disabled={walkinSubmitting || !selectedWalkinTables.length || !walkinData.party_size || walkinData.party_size > walkinMaxGuests}>
                   {walkinSubmitting ? 'Recording…' : 'Confirm & Seat Walk-in'}
                 </button>
                 <button
