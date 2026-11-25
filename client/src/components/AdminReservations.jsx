@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import '../assets/style/reservations.css';
 import ReservationFloorMap from './ReservationFloorMap';
-import { formatReservationSlot, getLocalReservationDate, RESERVATION_TIME_SLOTS } from '../utils/reservationSlots';
+import { formatReservationRange, formatReservationSlot, getLocalReservationDate, getReservationRange, RESERVATION_TIME_SLOTS } from '../utils/reservationSlots';
 
 export default function AdminReservations({ token }) {
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -33,6 +33,7 @@ export default function AdminReservations({ token }) {
     guest_email: 'walkin@freshbite.cafe',
     reservation_date: todayStr,
     time_slot: '12:00',
+    duration_hours: 1,
     party_size: '',
     table_ids: [],
     special_requests: 'Walk-in party',
@@ -82,9 +83,7 @@ export default function AdminReservations({ token }) {
     if (!walkinData.reservation_date || !walkinData.time_slot) {
       return () => { cancelled = true; };
     }
-    const [hour] = walkinData.time_slot.split(':').map(Number);
-    const availabilitySlot = `${String(hour).padStart(2, '0')}:00`;
-    fetch(`/api/tables/availability?date=${encodeURIComponent(walkinData.reservation_date)}&time_slot=${encodeURIComponent(availabilitySlot)}`, {
+    fetch(`/api/tables/availability?date=${encodeURIComponent(walkinData.reservation_date)}&time_slot=${encodeURIComponent(walkinData.time_slot)}&duration_hours=${encodeURIComponent(walkinData.duration_hours)}`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(async (res) => {
       const data = await res.json();
@@ -92,7 +91,7 @@ export default function AdminReservations({ token }) {
       if (!cancelled) setWalkinTables(data.tables || []);
     }).catch((err) => { if (!cancelled) setWalkinFeedback({ msg: err.message, type: 'error' }); });
     return () => { cancelled = true; };
-  }, [showWalkinModal, walkinData.reservation_date, walkinData.time_slot, token]);
+  }, [showWalkinModal, walkinData.reservation_date, walkinData.time_slot, walkinData.duration_hours, token]);
 
   const fetchReservations = async () => {
     if (!token) return;
@@ -388,7 +387,7 @@ export default function AdminReservations({ token }) {
                     </td>
                     <td className="admin-res-date">{r.reservation_date}</td>
                     <td>
-                      <strong>{formatReservationSlot(r.time_slot)}</strong>
+                      <strong>{formatReservationRange(String(r.start_time || r.time_slot).slice(0, 5), String(r.end_time || '').slice(0, 5) || getReservationRange(String(r.time_slot).slice(0, 5)).end)}</strong>
                     </td>
                     <td>
                       <strong>{r.party_size}</strong> {r.party_size === 1 ? 'guest' : 'guests'}
@@ -526,15 +525,10 @@ export default function AdminReservations({ token }) {
                 </div>
 
                 <div className="res-form-group">
-                  <label htmlFor="w-slot">Walk-in time</label>
-                  <input
-                    id="w-slot"
-                    type="time"
-                    required
-                    value={walkinData.time_slot}
-                    onChange={(e) => setWalkinData({ ...walkinData, time_slot: e.target.value })}
-                  />
+                  <label htmlFor="w-slot">Hourly walk-in slot</label>
+                  <select id="w-slot" required value={walkinData.time_slot} onChange={(e) => setWalkinData({ ...walkinData, time_slot: e.target.value, duration_hours: 1 })}>{RESERVATION_TIME_SLOTS.map((slot) => <option key={slot} value={slot}>{formatReservationSlot(slot)}</option>)}</select>
                 </div>
+                <div className="res-form-group"><label htmlFor="w-duration">Duration (hours)</label><select id="w-duration" value={walkinData.duration_hours} onChange={(e) => setWalkinData((prev) => ({ ...prev, duration_hours: Number(e.target.value) }))}>{[1, 2, 3, 4].filter((hours) => Number(walkinData.time_slot.slice(0, 2)) + hours <= 22).map((hours) => <option key={hours} value={hours}>{hours}</option>)}</select></div>
 
                 <div className="res-form-group">
                   <label htmlFor="w-status">Initial Status</label>

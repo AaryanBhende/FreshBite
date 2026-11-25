@@ -1,7 +1,20 @@
 import pool from '../config/db.js';
 
-// One-hour reservation blocks, represented by their start time.
+// Hourly slot starts; longer reservations occupy consecutive slots.
 export const TIME_SLOTS = Array.from({ length: 13 }, (_, hour) => `${String(hour + 9).padStart(2, '0')}:00`);
+
+const parseDurationRange = (timeSlot, durationHours = 1) => {
+  if (!TIME_SLOTS.includes(timeSlot)) return null;
+  const duration = Number(durationHours);
+  if (!Number.isInteger(duration) || duration < 1 || duration > 13) return null;
+  const startHour = Number(timeSlot.slice(0, 2));
+  if (startHour + duration > 22) return null;
+  const start = timeSlot;
+  const end = `${String(startHour + duration).padStart(2, '0')}:00`;
+  return { start, end, duration };
+};
+
+const intervalSql = "COALESCE(r.start_time, TIME(r.time_slot)) < TIME(?) AND COALESCE(r.end_time, ADDTIME(TIME(r.time_slot), '01:00:00')) > TIME(?)";
 
 const parseTableIds = (table_ids, table_id) => {
   const raw = Array.isArray(table_ids) ? table_ids : (table_id == null || table_id === '' ? [] : [table_id]);
@@ -20,7 +33,7 @@ const saveReservationTables = async (connection, reservationId, tableIds) => {
  * Returns free table counts and availability status for all one-hour slots on a date.
  */
 export const getAvailability = async (req, res) => {
-  const { date } = req.query;
+    const { date } = req.query;
 
   if (!date) {
     return res.status(400).json({ error: 'Query parameter date (YYYY-MM-DD) is required.' });
@@ -35,11 +48,11 @@ export const getAvailability = async (req, res) => {
     const [[tableCountRow]] = await pool.query('SELECT COUNT(*) AS total_tables FROM `tables`');
     const totalTables = Number(tableCountRow.total_tables);
     const [rows] = await pool.query(
-      `SELECT DISTINCT assigned.table_id, assigned.time_slot FROM (
-         SELECT r.table_id, r.time_slot FROM reservations r WHERE r.table_id IS NOT NULL
+      `SELECT DISTINCT assigned.table_id, assigned.time_slot, assigned.start_time, assigned.end_time FROM (
+         SELECT r.table_id, r.time_slot, r.start_time, r.end_time FROM reservations r WHERE r.table_id IS NOT NULL
            AND r.reservation_date = ? AND r.status IN ('Pending', 'Confirmed', 'Seated')
          UNION ALL
-         SELECT rt.table_id, r.time_slot FROM reservations r JOIN reservation_tables rt ON rt.reservation_id = r.id
+         SELECT rt.table_id, r.time_slot, r.start_time, r.end_time FROM reservations r JOIN reservation_tables rt ON rt.reservation_id = r.id
            WHERE r.reservation_date = ? AND r.status IN ('Pending', 'Confirmed', 'Seated')
        ) assigned`,
       [date, date]
@@ -49,9 +62,10 @@ export const getAvailability = async (req, res) => {
       const start = Number(slot.slice(0, 2)) * 60;
       const end = start + 60;
       const reserved = new Set(rows.filter((row) => {
-        const [hour, minute] = String(row.time_slot).split(':').map(Number);
+        const [hour, minute] = String(row.start_time || row.time_slot).split(':').map(Number);
         const reservationStart = hour * 60 + minute;
-        return reservationStart < end && reservationStart + 60 > start;
+        const reservationEnd = row.end_time ? Number(String(row.end_time).slice(0, 2)) * 60 + Number(String(row.end_time).slice(3, 5)) : reservationStart + 60;
+        return reservationStart < end && reservationEnd > start;
       }).map((row) => Number(row.table_id))).size;
       const available = Math.max(0, totalTables - reserved);
       return {
@@ -86,6 +100,7 @@ export const createReservation = async (req, res) => {
     guest_email,
     reservation_date,
     time_slot,
+    duration_hours = 1,
     party_size,
     special_requests = '',
     table_id,
@@ -113,11 +128,8 @@ export const createReservation = async (req, res) => {
     return res.status(400).json({ error: 'Invalid reservation_date format (YYYY-MM-DD).' });
   }
 
-  if (!TIME_SLOTS.includes(time_slot)) {
-    return res.status(400).json({
-      error: 'Invalid time slot. Choose an available one-hour slot.',
-    });
-  }
+  const timeRange = parseDurationRange(time_slot, duration_hours);
+  if (!timeRange) return res.status(400).json({ error: 'Choose an hourly start from 09:00 to 21:00 and a whole-hour duration that ends by 22:00.' });
 
   // Prevent past dates
   const todayStr = new Date().toISOString().split('T')[0];
@@ -148,10 +160,9 @@ export const createReservation = async (req, res) => {
       const [conflicts] = await connection.query(
         `SELECT r.id FROM reservations r LEFT JOIN reservation_tables rt ON rt.reservation_id = r.id
          WHERE (r.table_id = ? OR rt.table_id = ?) AND r.reservation_date = ?
-         AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
-         AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
+         AND ${intervalSql}
          AND r.status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
-        [tableId, tableId, reservation_date, time_slot, time_slot]
+        [tableId, tableId, reservation_date, timeRange.end, timeRange.start]
       );
       if (conflicts.length) {
         await connection.rollback();
@@ -164,8 +175,8 @@ export const createReservation = async (req, res) => {
 
     await connection.query(
       `INSERT INTO reservations 
-       (id, user_id, guest_name, guest_email, reservation_date, time_slot, party_size, seating_pref, special_requests, status, table_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, guest_name, guest_email, reservation_date, time_slot, start_time, end_time, party_size, seating_pref, special_requests, status, table_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         reservationId,
         userId,
@@ -173,6 +184,8 @@ export const createReservation = async (req, res) => {
         cleanEmail,
         reservation_date,
         time_slot,
+        timeRange.start,
+        timeRange.end,
         numPartySize,
         'No Preference',
         special_requests ? String(special_requests).trim() : null,
@@ -194,6 +207,9 @@ export const createReservation = async (req, res) => {
         guest_email: cleanEmail,
         reservation_date,
         time_slot,
+        start_time: timeRange.start,
+        end_time: timeRange.end,
+        duration_hours: timeRange.duration,
         party_size: numPartySize,
         seating_pref: 'No Preference',
         special_requests,
@@ -226,6 +242,11 @@ export const getUserReservations = async (req, res) => {
        ORDER BY reservation_date DESC, time_slot DESC`,
       [userId]
     );
+    rows.forEach((row) => {
+      const start = String(row.start_time || row.time_slot).slice(0, 5);
+      const end = String(row.end_time || `${String(Number(start.slice(0, 2)) + 1).padStart(2, '0')}:00`).slice(0, 5);
+      row.duration_hours = Number(end.slice(0, 2)) - Number(start.slice(0, 2));
+    });
     if (rows.length) {
       const [assigned] = await pool.query(
         `SELECT rt.reservation_id, t.id AS table_id, t.table_number, t.zone, t.capacity
@@ -323,6 +344,11 @@ export const getAdminReservations = async (req, res) => {
     sql += ' ORDER BY r.reservation_date DESC, r.time_slot ASC, r.created_at DESC';
 
     const [rows] = await pool.query(sql, params);
+    rows.forEach((row) => {
+      const start = String(row.start_time || row.time_slot).slice(0, 5);
+      const end = String(row.end_time || `${String(Number(start.slice(0, 2)) + 1).padStart(2, '0')}:00`).slice(0, 5);
+      row.duration_hours = Number(end.slice(0, 2)) - Number(start.slice(0, 2));
+    });
     const [assigned] = await pool.query(
       `SELECT rt.reservation_id, t.id AS table_id, t.table_number, t.zone, t.capacity
        FROM reservation_tables rt JOIN \`tables\` t ON t.id = rt.table_id
@@ -389,6 +415,7 @@ export const createWalkInReservation = async (req, res) => {
     guest_email = 'walkin@freshbite.cafe',
     reservation_date,
     time_slot,
+    duration_hours = 1,
     party_size,
     table_id,
     table_ids,
@@ -412,13 +439,8 @@ export const createWalkInReservation = async (req, res) => {
 
   const tableIds = parseTableIds(table_ids, table_id);
   if (!tableIds) return res.status(400).json({ error: 'table_ids must contain valid table IDs.' });
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time_slot))) {
-    return res.status(400).json({ error: 'Invalid walk-in time. Use a valid time in HH:mm format.' });
-  }
-  const [walkinHour, walkinMinute] = String(time_slot).split(':').map(Number);
-  if (walkinHour < 9 || walkinHour > 21 || (walkinHour === 21 && walkinMinute > 0)) {
-    return res.status(400).json({ error: 'Walk-in time must be between 09:00 and 21:00.' });
-  }
+  const timeRange = parseDurationRange(time_slot, duration_hours);
+  if (!timeRange) return res.status(400).json({ error: 'Choose an hourly start from 09:00 to 21:00 and a whole-hour duration that ends by 22:00.' });
   const todayStr = new Date().toISOString().split('T')[0];
   if (reservation_date < todayStr) {
     return res.status(400).json({ error: 'Cannot record a walk-in for a past date.' });
@@ -442,10 +464,9 @@ export const createWalkInReservation = async (req, res) => {
       const [conflicts] = await connection.query(
       `SELECT r.id FROM reservations r LEFT JOIN reservation_tables rt ON rt.reservation_id = r.id
        WHERE (r.table_id = ? OR rt.table_id = ?) AND r.reservation_date = ?
-       AND TIME(time_slot) < ADDTIME(TIME(?), '01:00:00')
-       AND ADDTIME(TIME(time_slot), '01:00:00') > TIME(?)
+       AND ${intervalSql}
        AND r.status IN ('Pending', 'Confirmed', 'Seated') FOR UPDATE`,
-      [tableId, tableId, reservation_date, time_slot, time_slot]
+      [tableId, tableId, reservation_date, timeRange.end, timeRange.start]
       );
       if (conflicts.length) {
         await connection.rollback();
@@ -457,14 +478,16 @@ export const createWalkInReservation = async (req, res) => {
 
     await connection.query(
       `INSERT INTO reservations 
-       (id, user_id, guest_name, guest_email, reservation_date, time_slot, party_size, seating_pref, special_requests, status, table_id)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, 'No Preference', ?, ?, ?)`,
+       (id, user_id, guest_name, guest_email, reservation_date, time_slot, start_time, end_time, party_size, seating_pref, special_requests, status, table_id)
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'No Preference', ?, ?, ?)`,
       [
         reservationId,
         String(guest_name).trim(),
         String(guest_email).trim().toLowerCase(),
         reservation_date,
         time_slot,
+        timeRange.start,
+        timeRange.end,
         numPartySize,
         special_requests,
         status,
@@ -481,6 +504,10 @@ export const createWalkInReservation = async (req, res) => {
       reservation_id: reservationId,
       table_id: tableIds[0],
       table_ids: tableIds,
+      time_slot,
+      start_time: timeRange.start,
+      end_time: timeRange.end,
+      duration_hours: timeRange.duration,
       table_capacity: combinedCapacity,
     });
   } catch (error) {

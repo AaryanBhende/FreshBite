@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatReservationSlot } from '../utils/reservationSlots';
+import { formatReservationRange, formatReservationSlot } from '../utils/reservationSlots';
 import '../assets/style/reservationFloorMap.css';
 
 const ZONES = [
@@ -19,7 +19,9 @@ export default function ReservationFloorMap({ tables = [], selectedId, selectedI
     const canSelect = !admin && status === 'Free';
     const isSelected = (selectedIds || (selectedId == null ? [] : [selectedId])).some((id) => Number(id) === Number(table.id));
     const label = zoneKey === 'Bar' ? `Bar ${table.table_number}` : `Table ${table.table_number}`;
-    const timeLabel = table.reservation_time ? formatReservationSlot(table.reservation_time) : '';
+    const timeLabel = table.reservation_time ? (table.reservation_end_time
+      ? formatReservationRange(String(table.reservation_time).slice(0, 5), String(table.reservation_end_time).slice(0, 5))
+      : formatReservationSlot(table.reservation_time)) : '';
     return (
       <button
         type="button"
@@ -49,7 +51,7 @@ export default function ReservationFloorMap({ tables = [], selectedId, selectedI
       <div className="floor-map-heading">
         <div>
           <h3>FRESHBITE · CURRENT TABLE STATUS</h3>
-          <p>{admin ? 'Live table status for the selected date and hour' : 'Choose a green table to continue'}</p>
+          <p>{admin ? 'Live table status for the selected date and time range' : 'Choose a green table to continue'}</p>
         </div>
         <div className="floor-map-legend" aria-label="Table status legend">
           <span><i className="free" />Free</span>

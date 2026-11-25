@@ -1,0 +1,56 @@
+[33mcommit 54d3970a19b6ac33fc5f6b119e8d1c4ff1d7d30a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Wed Nov 25 10:46:16 2026 +0530
+
+    Multiple table reservation,Debug meal bump before start preparing, Driver notification when order is ready.
+
+[33mcommit 45231f45057fd31a9e05ce0556450dd1a0646973[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Wed Nov 25 10:46:16 2026 +0530
+
+    Multiple table reservation,Debug meal bump before start preparing, Driver notification when order is ready.
+
+[33mcommit 12aa1a9ea306565323c2ba913d7941cab7326fa5[m[33m ([m[1;35mrefs/stash[m[33m)[m
+Merge: 8143964 4da2375 61568e1
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Mon Nov 23 16:41:33 2026 +0530
+
+    On main: wip before rebase
+
+[33mcommit ac1e99b167b186cdc10e02d4cd920c35c0bf23be[m
+Author: Aaryan Vishwamber Bhende <149661478+AaryanBhende@users.noreply.github.com>
+Date:   Sun Nov 1 18:51:50 2026 +0000
+
+    Update environment variables for security and configuration
+    
+    Updated sensitive information placeholders and added optional email configuration.
+
+[33mcommit 058588ab8c0ac2016df2ee9f5bf2c3664d61502e[m
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Mon Nov 2 00:17:58 2026 +0530
+
+    Update repository to match my local system
+
+[33mcommit 14163cd207af015d6a33834108ca5cdee2bcda6a[m
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Mon Oct 26 11:37:17 2026 +0530
+
+    Update kitchen and Drivers panel
+
+[33mcommit 92408ee38e4600fcb13ff3bffd8b4967d48914c1[m
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Mon Oct 5 16:06:57 2026 +0530
+
+    Update application features and backend settings
+
+[33mcommit 22ce6ec059b1da3f8794cf738235b5050e9a7b1f[m
+Author: Aaryan Bhende <bhendeaaryan@gmail.com>
+Date:   Mon Sep 28 17:34:52 2026 +0530
+
+    Add project files from new device
+
+[33mcommit cd06ffa4f01c4a027cb965c25a4ee4534063ac62[m
+Author: AaryanBhende <bhendeaaryan@gmail.com>
+Date:   Wed Sep 23 15:23:44 2026 +0530
+
+    update to react and node.js

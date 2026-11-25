@@ -3,7 +3,7 @@ import { AuthContext } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import ReservationFloorMap from '../components/ReservationFloorMap';
 import AuthModal from './AuthModal';
-import { formatReservationSlot, getLocalReservationDate, isReservationSlotInPast } from '../utils/reservationSlots';
+import { formatReservationRange, formatReservationSlot, getLocalReservationDate, getReservationRange, isReservationSlotInPast } from '../utils/reservationSlots';
 import '../assets/style/reservations.css';
 
 export default function Reservations() {
@@ -27,6 +27,7 @@ export default function Reservations() {
     guest_email: user?.email || '',
     reservation_date: todayStr,
     time_slot: '',
+    duration_hours: 1,
     party_size: '',
     special_requests: '',
   });
@@ -75,7 +76,8 @@ export default function Reservations() {
     let firstLoad = true;
     const refreshTables = async () => {
       try {
-        const res = await fetch(`/api/tables/availability?date=${encodeURIComponent(formData.reservation_date)}&time_slot=${encodeURIComponent(formData.time_slot)}`);
+        const params = new URLSearchParams({ date: formData.reservation_date, time_slot: formData.time_slot, duration_hours: String(formData.duration_hours) });
+        const res = await fetch(`/api/tables/availability?${params}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Unable to load table availability.');
         if (!cancelled) {
@@ -98,7 +100,7 @@ export default function Reservations() {
     refreshTables();
     const refreshTimer = setInterval(refreshTables, 15000);
     return () => { cancelled = true; clearInterval(refreshTimer); };
-  }, [formData.reservation_date, formData.time_slot]);
+  }, [formData.reservation_date, formData.time_slot, formData.duration_hours]);
 
   const fetchAvailability = async (date) => {
     if (!date) return;
@@ -126,7 +128,7 @@ export default function Reservations() {
   };
 
   const handleSlotSelect = (slot) => {
-    setFormData((prev) => ({ ...prev, time_slot: slot.time_slot }));
+    setFormData((prev) => ({ ...prev, time_slot: slot.time_slot, duration_hours: 1 }));
     setFeedback({ msg: '', type: '' });
   };
 
@@ -170,7 +172,7 @@ export default function Reservations() {
       if (!res.ok) {
         setFeedback({ msg: data.error || 'Failed to complete reservation.', type: 'error' });
         fetchAvailability(formData.reservation_date);
-        const query = new URLSearchParams({ date: formData.reservation_date, time_slot: formData.time_slot });
+        const query = new URLSearchParams({ date: formData.reservation_date, time_slot: formData.time_slot, duration_hours: String(formData.duration_hours) });
         fetch(`/api/tables/availability?${query}`)
           .then(async (tableRes) => {
             const tableData = await tableRes.json();
@@ -220,7 +222,7 @@ export default function Reservations() {
                 <strong>Confirmation ID:</strong> <code>{confirmedBooking.id}</code>
               </p>
               <p>
-                <strong>Date &amp; Time:</strong> {confirmedBooking.reservation_date} · {formatReservationSlot(confirmedBooking.time_slot)}
+                <strong>Date &amp; Time:</strong> {confirmedBooking.reservation_date} · {formatReservationRange(confirmedBooking.start_time || confirmedBooking.time_slot, confirmedBooking.end_time || getReservationRange(confirmedBooking.time_slot, confirmedBooking.duration_hours || 1).end)}
               </p>
               <p>
                 <strong>Party Size:</strong> {confirmedBooking.party_size} Guests
@@ -243,7 +245,7 @@ export default function Reservations() {
                 className="res-book-another-btn"
                 onClick={() => {
                   setConfirmedBooking(null);
-                  setFormData((prev) => ({ ...prev, time_slot: '', party_size: '', special_requests: '' }));
+                  setFormData((prev) => ({ ...prev, time_slot: '', duration_hours: 1, party_size: '', special_requests: '' }));
                   setSelectedTables([]);
                 }}
               >
@@ -369,9 +371,10 @@ export default function Reservations() {
               {formData.time_slot && (
                 <section className="slots-section" aria-live="polite">
                   <div className="slots-header">
-                    <h3>Choose your table</h3>
+                    <h3>Choose your table · {formatReservationRange(formData.time_slot, getReservationRange(formData.time_slot, formData.duration_hours).end)}</h3>
                     {selectedTables.length > 0 && <span>Combined capacity: {maxGuests} seats</span>}
                   </div>
+                  <div className="res-form-group"><label htmlFor="res-duration">Duration (hours)</label><select id="res-duration" value={formData.duration_hours} onChange={(event) => setFormData((prev) => ({ ...prev, duration_hours: Number(event.target.value) }))}>{[1, 2, 3, 4].filter((hours) => Number(formData.time_slot.slice(0, 2)) + hours <= 22).map((hours) => <option key={hours} value={hours}>{hours}</option>)}</select></div>
                   {loadingTables ? <p className="reservation-slots-loading">Loading table availability…</p> : (
                     <ReservationFloorMap
                       tables={tableAvailability}
@@ -418,7 +421,7 @@ export default function Reservations() {
                   ? 'Confirming Table…'
                   : `Reserve Table for ${formData.party_size} Guest${
                       formData.party_size > 1 ? 's' : ''
-                    } at ${formData.time_slot || '...'}`}
+                    } at ${formData.time_slot ? formatReservationRange(formData.time_slot, getReservationRange(formData.time_slot, formData.duration_hours).end) : '...'}`}
               </button>
             </form>
           </div>

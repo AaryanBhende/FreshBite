@@ -23,7 +23,17 @@ const formatMinutes = (minutes) => {
 };
 
 export const formatReservationSlot = (slot) => {
-  const [hour, minute] = slot.split(':').map(Number);
-  const start = hour * 60 + minute;
-  return `${formatMinutes(start)} – ${formatMinutes(start + 60)}`;
+  return formatReservationRange(slot, addReservationHours(slot, 1));
+};
+
+export const addReservationHours = (slot, hours = 1) => {
+  const [hour] = slot.split(':').map(Number);
+  return `${String(hour + Number(hours)).padStart(2, '0')}:00`;
+};
+
+export const getReservationRange = (slot, durationHours = 1) => ({ start: slot, end: addReservationHours(slot, durationHours) });
+
+export const formatReservationRange = (start, end) => {
+  const toMinutes = (value) => value.split(':').map(Number).reduce((h, m) => h * 60 + m);
+  return `${formatMinutes(toMinutes(start))} – ${formatMinutes(toMinutes(end))}`;
 };

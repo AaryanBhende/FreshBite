@@ -34,7 +34,7 @@ FreshBite/
 │       ├── App.jsx               # SPA routes, shared navbar/footer/auth provider
 │       ├── context/AuthContext.jsx
 │       ├── utils/deliveryTrip.js  # Client-side simulated delivery trip state
-│       ├── utils/reservationSlots.js # Shared one-hour slot labels/range
+│       ├── utils/reservationSlots.js # Shared hourly slots and duration range labels
 │       ├── components/           # Shared UI and admin subpanels
 │       │   ├── ReservationFloorMap.jsx # Shared customer/admin table status map
 │       │   └── AdminEmployees.jsx     # Admin employee CRUD and password reset
@@ -155,7 +155,7 @@ All paths below are prefixed by `/api` in `server/server.js`.
 | Orders customer | `POST /orders/:orderId/verify-delivery-otp` | JWT-authenticated order owner verifies the driver's 4-digit code to complete delivery |
 | Kitchen display | `GET /kds/orders`, `GET /kds/history`, `PUT /kds/orders/:id/status`, `PUT /kds/orders/items/:itemId/bump` | Kitchen-role ticket and item workflow |
 | Kitchen delivered history | `GET /kds/delivered?page=N` | Kitchen role required; chronological pages of 20 delivered order groups |
-| Tables | `GET /tables`, `GET /tables/availability?date=YYYY-MM-DD&time_slot=HH:00` | Public table layout/capacity and status for one-hour blocks |
+| Tables | `GET /tables`, `GET /tables/availability?date=YYYY-MM-DD&time_slot=HH:00&duration_hours=N` | Public table layout/capacity and status across consecutive hourly slots |
 | Reservations | `GET /reservations/availability?date=...` | Public availability lookup |
 | Reservations | `POST /reservations` | Optional JWT; guest reservations are allowed |
 | Reservations customer | `GET /reservations/user`, `PUT /reservations/:id/cancel` | JWT-authenticated history; owner may cancel Pending or Confirmed reservations |
@@ -209,7 +209,7 @@ The JWT secret comes from `JWT_SECRET` with a development fallback defined in th
 
 Promotion/rush related incremental SQL is under `server/migrations/`. Review the full schema and relevant migrations before changing table fields or writing queries; the SQL controllers rely on those names and relationships.
 
-Reservation and dine-in table assignment use `tables` and `reservations.table_id`; `orders.table_id` links dine-in order line items to a table. Existing databases need migrations through `20261029_delivery_otp_verification.sql` applied in date order. The base schema includes the OTP hash, expiry, attempt counter, and `awaiting_otp` state for fresh setup. Table numbers repeat across zones, so use numeric `table_id` for relationships and `zone`/`table_number` for display. Reservation slots are one-hour blocks; `Seated` reservations appear as Occupied on the table map, while Pending/Confirmed reservations appear as Booked. Orders also track driver assignment/outcomes, customer OTP verification, and kitchen status/item cooked state; menu items include `is_available` for sold-out controls.
+Reservation and dine-in table assignment use `tables`, legacy `reservations.table_id`, and `reservation_tables`; `orders.table_id` links dine-in order line items to a table. Existing databases need migrations through `20261125_reservation_time_ranges.sql` applied in date order, including the reservation-table migrations. The base schema includes the OTP hash, expiry, attempt counter, and `awaiting_otp` state for fresh setup. Table numbers repeat across zones, so use numeric `table_id` for relationships and `zone`/`table_number` for display. Reservation intervals use explicit start/end times, with the legacy one-hour `time_slot=HH:00` shorthand preserved; `Seated` reservations appear as Occupied on the table map, while Pending/Confirmed reservations appear as Booked. Orders also track driver assignment/outcomes, customer OTP verification, and kitchen status/item cooked state; menu items include `is_available` for sold-out controls.
 
 ## Upload and static image flow
 
@@ -244,3 +244,6 @@ The app requires a configured MySQL database and local server environment variab
 
 ## Multi-table reservations (2026-11)
 Reservations may select multiple table IDs across Patio, Indoor, and Bar. The floor map toggles only Free tables for customer and admin walk-in selection; the admin status map remains read-only. Customer booking, walk-in, and Menu dine-in reservation requests send table_ids: number[]; legacy table_id remains the primary/first assigned table for existing reads. Selected labels include zone and table number. Guest count is capped at the sum of selected capacities and clamped after deselection/blur. Reservation records persist table links in reservation_tables; dine-in order lines also retain legacy table_id, table_number, and table_zone fields and store the full ID list in orders.table_ids.
+
+## Reservation time ranges
+Reservation records retain `reservation_date`, hourly `time_slot`, legacy primary `table_id`, and `reservation_tables`, with nullable `start_time`/`end_time` fields for the occupied interval. Existing rows are backfilled to one hour by `20261125_reservation_time_ranges.sql`. Requests keep `time_slot: "HH:00"` and may include `duration_hours` as a positive whole number; omitted duration remains one hour, and ranges must end by 22:00. Availability, booking, and walk-in routes compare the full interval, which naturally occupies every consecutive hourly slot, and lock selected table rows by ascending ID before capacity and overlap validation. User/admin history retains legacy fields and includes range fields and duration. Invalid durations return 400 `{ error }`; table conflicts return 409 `{ error }`.

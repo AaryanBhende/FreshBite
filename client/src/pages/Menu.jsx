@@ -6,7 +6,7 @@ import { AuthContext } from '../context/AuthContext';
 import AuthModal from './AuthModal';
 import PromoAnnouncements from '../components/PromoAnnouncements';
 import ReservationFloorMap from '../components/ReservationFloorMap';
-import { formatReservationSlot, RESERVATION_TIME_SLOTS } from '../utils/reservationSlots';
+import { formatReservationRange, formatReservationSlot, getReservationRange, RESERVATION_TIME_SLOTS } from '../utils/reservationSlots';
 import '../assets/style/menu.css';
 
 const defaultCenter = { lat: 15.268023, lng: 73.967102 };
@@ -88,6 +88,7 @@ export default function Menu() {
   const [seatedTableId, setSeatedTableId] = useState('');
   const [reservationDate, setReservationDate] = useState(getDefaultReservationDate);
   const [reservationSlot, setReservationSlot] = useState(getDefaultReservationSlot);
+  const [reservationDuration, setReservationDuration] = useState(1);
   const [reservationGuests, setReservationGuests] = useState(1);
   const [guestReservationName, setGuestReservationName] = useState('');
   const [guestReservationEmail, setGuestReservationEmail] = useState('');
@@ -388,7 +389,7 @@ export default function Menu() {
     setLoadingDineTables(true);
     const loadTables = async () => {
       try {
-        const query = new URLSearchParams({ date: reservationDate, time_slot: reservationSlot });
+        const query = new URLSearchParams({ date: reservationDate, time_slot: reservationSlot, duration_hours: String(reservationDuration) });
         const response = await fetch(`/api/tables/availability?${query}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load table availability.');
@@ -412,7 +413,7 @@ export default function Menu() {
     loadTables();
     const timer = setInterval(loadTables, 15000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [showDineReservationModal, reservationDate, reservationSlot]);
+  }, [showDineReservationModal, reservationDate, reservationSlot, reservationDuration]);
 
   const handleOrderTypeChange = (type) => {
     setOrderType(type);
@@ -488,6 +489,7 @@ export default function Menu() {
             guest_email: guestEmail,
             reservation_date: reservationDate,
             time_slot: reservationSlot,
+            duration_hours: reservationDuration,
             party_size: reservationGuests,
             special_requests: 'Dine-in order',
             table_ids: dineInTables.map((table) => Number(table.id)),
@@ -1089,11 +1091,13 @@ export default function Menu() {
                 />
               </label>
               <label>
-                One-hour time slot
-                <select value={reservationSlot} onChange={(event) => { setReservationSlot(event.target.value); setSelectedReservationTables([]); }}>
+                Hourly time slot
+                <select value={reservationSlot} onChange={(event) => { setReservationSlot(event.target.value); setSelectedReservationTables([]); setReservationDuration(1); }}>
                   {RESERVATION_TIME_SLOTS.map((slot) => <option key={slot} value={slot}>{formatReservationSlot(slot)}</option>)}
                 </select>
               </label>
+              <label>Duration (hours)<select value={reservationDuration} onChange={(event) => setReservationDuration(Number(event.target.value))}>{[1, 2, 3, 4].filter((hours) => Number(reservationSlot.slice(0, 2)) + hours <= 22).map((hours) => <option key={hours} value={hours}>{hours}</option>)}</select></label>
+              <p>Selected time: {formatReservationRange(reservationSlot, getReservationRange(reservationSlot, reservationDuration).end)}</p>
               {selectedReservationTables.length > 0 && (
                 <label>
                   Guests · {selectedReservationTables.map((table) => `${table.zone} ${table.table_number}`).join(', ')} (maximum {reservationMaxGuests} seats)
@@ -1243,7 +1247,7 @@ export default function Menu() {
             {orderType === 'Dine In' && dineInTables.length > 0 && (
               <p className="confirm-address">
                 <strong>Table{dineInTables.length > 1 ? 's' : ''}:</strong> {dineInTables.map((table) => `${table.zone} ${table.table_number}`).join(', ')} · {dineInTables.reduce((sum, table) => sum + Number(table.capacity || 0), 0)} seats
-                {dineInMode === 'reserve' && <> · {reservationGuests} guest{Number(reservationGuests) === 1 ? '' : 's'} · {reservationDate} · {formatReservationSlot(reservationSlot)}</>}
+                {dineInMode === 'reserve' && <> · {reservationGuests} guest{Number(reservationGuests) === 1 ? '' : 's'} · {reservationDate} · {formatReservationRange(reservationSlot, getReservationRange(reservationSlot, reservationDuration).end)}</>}
               </p>
             )}
             <div className="modal-actions">

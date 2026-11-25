@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { formatReservationRange, getReservationRange } from '../utils/reservationSlots';
 import '../assets/style/profile.css';
 
 
@@ -300,7 +301,7 @@ function UserReservations({ token }) {
             <div className="order-group-meta">
               <span className="order-group-id">{r.id}</span>
               <span className="order-group-date">
-                📅 {r.reservation_date} at 🕒 {r.time_slot}
+                📅 {r.reservation_date} at 🕒 {formatReservationRange(String(r.start_time || r.time_slot).slice(0, 5), String(r.end_time || '').slice(0, 5) || getReservationRange(String(r.time_slot).slice(0, 5), r.duration_hours || 1).end)}
               </span>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
