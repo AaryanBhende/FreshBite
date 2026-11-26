@@ -2029,6 +2029,26 @@ img { max-width: 100%; }
   color: #fff;
 }
 .rush-status { margin: 0 auto 1rem; padding: .75rem 1rem; max-width: 1100px; border-radius: 8px; background: #f2f7e9; color: #35522e; font-weight: 600; text-align: center; }
+
+.guest-order-confirmation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.25rem;
+  max-width: 1100px;
+  margin: 0 auto 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #b8d6a6;
+  border-radius: 10px;
+  background: #f2f8ed;
+  color: #294524;
+}
+.guest-order-confirmation h2 { margin: 0 0 .35rem; font-size: 1.15rem; }
+.guest-order-confirmation p { margin: .25rem 0; }
+.guest-order-confirmation ul { margin: .5rem 0; padding-left: 1.25rem; }
+@media (max-width: 640px) {
+  .guest-order-confirmation { align-items: stretch; flex-direction: column; }
+}
 .promotion-checkout { display: grid; gap: .5rem; margin: 1rem 0; }
 .promotion-input-row { display: flex; gap: .5rem; }
 .promotion-input-row input { flex: 1; min-width: 0; }

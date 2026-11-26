@@ -67,6 +67,7 @@ export default function Menu() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [guestOrderConfirmation, setGuestOrderConfirmation] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showGuestCheckoutChoice, setShowGuestCheckoutChoice] = useState(false);
   const [guestDineInCheckout, setGuestDineInCheckout] = useState(false);
@@ -473,7 +474,9 @@ export default function Menu() {
   }, [resumeOrderAfterAuth, user, token]);
 
   const executeOrderPlacement = async () => {
+    const isGuestOrder = !(user && token) || guestDineInCheckout;
     setShowConfirmModal(false);
+    setGuestOrderConfirmation(null);
     setIsPlacingOrder(true);
     let reservationId = null;
     try {
@@ -541,9 +544,15 @@ export default function Menu() {
       setSelectedReservationTables([]);
       setGuestDineInCheckout(false);
       localStorage.removeItem('freshbite_cart');
-      setLastOrderId(groupOrderId);
+      setLastOrderId(isGuestOrder ? null : groupOrderId);
+      setGuestOrderConfirmation(isGuestOrder ? {
+        orderId: groupOrderId,
+        orderType,
+        total: payableTotal,
+        items: cart.map(({ title, quantity }) => ({ title, quantity })),
+      } : null);
       fetchOrders();
-      setShowSuccessModal(true);
+      setShowSuccessModal(!isGuestOrder);
     } catch (err) {
       if (reservationId && user && token) {
         try {
@@ -611,6 +620,17 @@ export default function Menu() {
     <main className="menu-main">
       {rushStatus && <p className="rush-status" role="status">Restaurant is {rushStatus.level} · estimated wait {rushStatus.wait}</p>}
       <PromoAnnouncements location="hero_section" />
+      {guestOrderConfirmation && (
+        <section className="guest-order-confirmation" role="status" aria-live="polite">
+          <div>
+            <h2>Guest order received</h2>
+            <p>Reference: <strong>{guestOrderConfirmation.orderId}</strong> · {guestOrderConfirmation.orderType} · ₹{guestOrderConfirmation.total.toFixed(2)}</p>
+            <ul>{guestOrderConfirmation.items.map((item, index) => <li key={`${item.title}-${index}`}>{item.title} × {item.quantity}</li>)}</ul>
+            <p>Keep this reference for your records. You can continue browsing and add more items.</p>
+          </div>
+          <button type="button" className="btn-secondary" onClick={() => setGuestOrderConfirmation(null)}>Continue Ordering</button>
+        </section>
+      )}
       {recommendations?.items?.length > 0 && (
         <section className="catalog-section recommendations-section">
           <div className="recommendations-heading">

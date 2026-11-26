@@ -247,3 +247,6 @@ Reservations may select multiple table IDs across Patio, Indoor, and Bar. The fl
 
 ## Reservation time ranges
 Reservation records retain `reservation_date`, hourly `time_slot`, legacy primary `table_id`, and `reservation_tables`, with nullable `start_time`/`end_time` fields for the occupied interval. Existing rows are backfilled to one hour by `20261125_reservation_time_ranges.sql`. Requests keep `time_slot: "HH:00"` and may include `duration_hours` as a positive whole number; omitted duration remains one hour, and ranges must end by 22:00. Availability, booking, and walk-in routes compare the full interval, which naturally occupies every consecutive hourly slot, and lock selected table rows by ascending ID before capacity and overlap validation. User/admin history retains legacy fields and includes range fields and duration. Invalid durations return 400 `{ error }`; table conflicts return 409 `{ error }`.
+
+## Order checkout confirmation
+`Menu.jsx` retains the dine-in guest-versus-sign-in choice and uses the same `/api/orders` contract. On success, authenticated orders show the `success-modal` with Track Order and Continue Ordering. Guest orders clear the cart and display an inline order reference/item summary without opening the modal or linking to `/track/:orderId`, whose status API requires an authenticated owner token.

@@ -211,3 +211,6 @@ ReservationFloorMap accepts numeric selectedIds and toggles Free seats by table 
 
 ## Multi-hour reservations
 `reservationSlots.js` keeps the hourly `HH:00` slot picker and provides whole-hour duration/range helpers. Customer Reservations, Menu dine-in reservation, and admin walk-in flows offer a duration in hours. Each additional hour claims the next consecutive slot. Availability is re-requested for the full date, start slot, and duration; the floor map reports tables occupied anywhere within that window. Confirmation and history show the full hourly range alongside selected zone/table labels and combined capacity. Requests retain `time_slot` and may add `duration_hours`; omitted duration remains one hour.
+
+## Order confirmation behavior
+Menu checkout uses the authenticated order status endpoint for Track Order, so only orders placed with both `user` and `token` show the post-order `success-modal` with Track Order and Continue Ordering. Guest orders (including Continue as Guest dine-in) clear the cart and show an inline confirmation with the order reference and item summary; no tracker link is presented. Both success paths preserve the `POST /api/orders` response and guest/auth request behavior.

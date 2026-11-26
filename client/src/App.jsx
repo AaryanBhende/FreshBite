@@ -19,7 +19,7 @@ import KitchenHistory from './pages/KitchenHistory';
 
 export default function App() {
   return (
-    <AuthProvider>
+    <AuthProvider basename={import.meta.env.BASE_URL}>
       <Router>
         <AppContent />
       </Router>
@@ -79,4 +79,4 @@ function AppContent() {
       {!isAdmin && !isDriver && !isKitchen && <Footer />}
     </div>
   );
-}
+}
