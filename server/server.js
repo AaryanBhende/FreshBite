@@ -26,6 +26,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1); // behind Railway's proxy
 
 // 1. Response Compression (<200ms API target)
 app.use(compression());

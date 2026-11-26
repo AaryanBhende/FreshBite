@@ -6,7 +6,20 @@ import pool from './db.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Loads schema.sql once, when the database has no `users` table yet (fresh install).
+const describe = (err) => `${err.code || ''} ${err.message || ''} ${(err.errors || []).map((e) => e.message || e.code).join('; ')}`.trim();
+
+// Waits for the database to accept connections (it may still be starting), then loads the schema.
 export default async function ensureSchema() {
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      await pool.query('SELECT 1');
+      break;
+    } catch (err) {
+      console.error(`DB not reachable (attempt ${attempt}/10): ${describe(err)}`);
+      if (attempt === 10) return;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
   try {
     const [rows] = await pool.query("SHOW TABLES LIKE 'users'");
     if (rows.length > 0) return;
@@ -33,6 +46,6 @@ export default async function ensureSchema() {
       conn.release();
     }
   } catch (err) {
-    console.error('Schema init failed:', err.message);
+    console.error('Schema init failed:', describe(err));
   }
 }
