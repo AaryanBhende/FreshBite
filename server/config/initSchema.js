@@ -22,30 +22,42 @@ export default async function ensureSchema() {
   }
   try {
     const [rows] = await pool.query("SHOW TABLES LIKE 'users'");
-    if (rows.length > 0) return;
-    console.log('Empty database detected, loading schema.sql ...');
-    const sql = fs.readFileSync(path.join(__dirname, '../schema.sql'), 'utf8').replace(/\r\n/g, '\n');
-    const conn = await pool.getConnection();
-    try {
-      // Drop comment-only lines, then split on statement terminators at end of line.
-      // The dump's /*! ... */ conditional comments (some are split across lines) are only
-      // session settings, so strip them and disable FK checks ourselves.
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      const statements = sql
-        .replace(/\/\*[\s\S]*?\*\/;?/g, '')
-        .split('\n')
-        .filter((l) => !l.startsWith('--'))
-        .join('\n')
-        .split(/;[ \t]*\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      for (const stmt of statements) await conn.query(stmt);
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
+    if (rows.length === 0) {
+      console.log('Empty database detected, loading schema.sql ...');
+      await runSqlFile('../schema.sql');
       console.log('Schema loaded.');
-    } finally {
-      conn.release();
+    }
+    // One-time menu seed (migrations/menu_item.sql): only when the menu is empty.
+    const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM menu_items');
+    if (n === 0) {
+      console.log('Menu is empty, loading migrations/menu_item.sql ...');
+      await runSqlFile('../migrations/menu_item.sql');
+      console.log('Menu items loaded.');
     }
   } catch (err) {
     console.error('Schema init failed:', describe(err));
+  }
+}
+
+async function runSqlFile(relPath) {
+  const sql = fs.readFileSync(path.join(__dirname, relPath), 'utf8').replace(/\r\n/g, '\n');
+  const conn = await pool.getConnection();
+  try {
+    // Drop comment-only lines, then split on statement terminators at end of line.
+    // The dump's /*! ... */ conditional comments (some are split across lines) are only
+    // session settings, so strip them and disable FK checks ourselves.
+    await conn.query('SET FOREIGN_KEY_CHECKS=0');
+    const statements = sql
+      .replace(/\/\*[\s\S]*?\*\/;?/g, '')
+      .split('\n')
+      .filter((l) => !l.startsWith('--'))
+      .join('\n')
+      .split(/;[ \t]*\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const stmt of statements) await conn.query(stmt);
+    await conn.query('SET FOREIGN_KEY_CHECKS=1');
+  } finally {
+    conn.release();
   }
 }
