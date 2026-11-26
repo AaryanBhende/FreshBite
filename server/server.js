@@ -18,6 +18,7 @@ import promotionRoutes from './routes/promotionRoutes.js';
 import rushRoutes from './routes/rushRoutes.js';
 import tableRoutes from './routes/tableRoutes.js';
 import kdsRoutes from './routes/kdsRoutes.js';
+import ensureSchema from './config/initSchema.js';
 
 dotenv.config();
 
@@ -69,6 +70,13 @@ app.use('/api/contact', contactRoutes);
 // Keep unknown API paths in the same JSON response contract as known routes.
 app.use('/api', (req, res) => res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` }));
 
+// 6. Serve the built React client (SPA fallback for client-side routes)
+const clientDist = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDist));
+app.get('*', (req, res, next) => {
+  res.sendFile(path.join(clientDist, 'index.html'), (err) => err && next());
+});
+
 // Global Error Handler
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
@@ -80,4 +88,5 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+await ensureSchema();
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
