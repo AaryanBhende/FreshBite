@@ -19,8 +19,8 @@ import KitchenHistory from './pages/KitchenHistory';
 
 export default function App() {
   return (
-    <AuthProvider basename={import.meta.env.BASE_URL}>
-      <Router>
+    <AuthProvider>
+      <Router basename={import.meta.env.BASE_URL}>
         <AppContent />
       </Router>
     </AuthProvider>
