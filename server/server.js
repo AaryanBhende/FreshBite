@@ -18,6 +18,7 @@ import promotionRoutes from './routes/promotionRoutes.js';
 import rushRoutes from './routes/rushRoutes.js';
 import tableRoutes from './routes/tableRoutes.js';
 import kdsRoutes from './routes/kdsRoutes.js';
+import ensureSchema from './config/initSchema.js';
 
 dotenv.config();
 
@@ -87,4 +88,5 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+await ensureSchema();
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
