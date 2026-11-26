@@ -191,7 +191,7 @@ Current backend image storage is mixed: menu images are saved in `client/public/
 
 ## Client configuration
 
-The Google Maps components read `VITE_GOOGLE_MAPS_API_KEY` from Vite's `import.meta.env`. Configure it in a local client env file for development and in the frontend build environment for deployment. Keep actual key values out of these context docs and source control; only the variable name belongs here.
+The Google Maps components read `VITE_GOOGLE_MAPS_API_KEY` and Google OAuth reads `VITE_GOOGLE_CLIENT_ID` from Vite's `import.meta.env`. Configure them in a local client env file for development and in the frontend build environment for deployment. Keep actual values out of context docs and source control; only variable names belong here. Vite exposes `VITE_` values in the browser bundle, so these are client configuration values rather than private server secrets.
 
 ## UI implementation conventions
 
