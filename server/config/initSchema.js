@@ -34,13 +34,26 @@ export default async function ensureSchema() {
       await runSqlFile('../migrations/menu_item.sql');
       console.log('Menu items loaded.');
     }
+    // One-time data files, tracked in `applied_seeds` so each runs once per database.
+    // admin.sql holds users rows; REPLACE overwrites the default admin row from schema.sql.
+    await runOnce('admin.sql', (sql) => sql.replace(/INSERT INTO `users`/g, 'REPLACE INTO `users`'));
   } catch (err) {
     console.error('Schema init failed:', describe(err));
   }
 }
 
-async function runSqlFile(relPath) {
-  const sql = fs.readFileSync(path.join(__dirname, relPath), 'utf8').replace(/\r\n/g, '\n');
+async function runOnce(name, transform) {
+  await pool.query('CREATE TABLE IF NOT EXISTS applied_seeds (name VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
+  const [done] = await pool.query('SELECT 1 FROM applied_seeds WHERE name = ?', [name]);
+  if (done.length > 0) return;
+  console.log(`Applying migrations/${name} ...`);
+  await runSqlFile(`../migrations/${name}`, transform);
+  await pool.query('INSERT INTO applied_seeds (name) VALUES (?)', [name]);
+  console.log(`Applied migrations/${name}.`);
+}
+
+async function runSqlFile(relPath, transform = (x) => x) {
+  const sql = transform(fs.readFileSync(path.join(__dirname, relPath), 'utf8').replace(/\r\n/g, '\n'));
   const conn = await pool.getConnection();
   try {
     // Drop comment-only lines, then split on statement terminators at end of line.
