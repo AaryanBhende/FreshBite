@@ -37,6 +37,11 @@ export default async function ensureSchema() {
     // One-time data files, tracked in `applied_seeds` so each runs once per database.
     // admin.sql holds users rows; REPLACE overwrites the default admin row from schema.sql.
     await runOnce('admin.sql', (sql) => sql.replace(/INSERT INTO `users`/g, 'REPLACE INTO `users`'));
+    // datamigration.sql (announcements, promotions, orders, reservations, tables, ...) must run
+    // before reservation_tables.sql, which links reservations to tables.
+    const asReplace = (sql) => sql.replace(/^INSERT INTO /gm, 'REPLACE INTO ');
+    await runOnce('datamigration.sql', asReplace);
+    await runOnce('reservation_tables.sql', asReplace);
   } catch (err) {
     console.error('Schema init failed:', describe(err));
   }
